@@ -1,0 +1,39 @@
+#load relevant packages for data transformation, especially tidyverse
+#load package to read excel
+
+library(data.table)
+library(tidyverse)
+library(readxl)
+
+Ariel.clean <- read_excel("C:/Users/ovu4/Desktop/ARIEL_renamed_21September_20October_2018.xlsx")
+
+#now transpose to long format using gather and listing every column
+#new columns created called disaggregate and value to match up format
+#specify the list of columns with the column numbers or names going to wide format
+
+Ariel.long <- Ariel.clean %>%
+  gather("Disaggregate","Value",10:37) %>%
+  filter(!is.na(Value))
+
+#repeat with each partners file and combine the dataframes - double check columns to transpose
+
+[partner2].clean <- read_excel("[location of partner 2 excel file]")
+
+[partner2].long <- [partner2].clean %>%
+  gather("Disaggregate","Value",10:37) %>%
+  filter(!is.na(Value))
+
+[...repeat for each partner and create dataframe for each]
+
+#join the dataframes, which should ideally have same # columns, rows can vary
+
+partners.combined <- bind.rows(Ariel.long, [partner2].long, ...)
+
+#there should now be a dataframe that is all partners info, disaggregated long format
+#export to CSV, usually easiest to reformat if needed in R, analysis
+
+
+write.csv(partners.combined, file="[whatever name you want].csv")
+
+
+
