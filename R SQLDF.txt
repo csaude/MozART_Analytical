@@ -1,0 +1,20 @@
+#load package
+library("RODBC") 
+install.packages("sqldf")
+library("sqldf")
+db<-file.path("C://Users//cnhantumbo//Documents//MOZART//MOZART_TETE_2018.02//CS Changara.mdb") #connect database.
+#Note the UNIX style slash (/). "\" is "escape character" so all "\"  you should replace either with "/" or "\\"
+#internal RODBC function
+channel<-odbcConnectAccess2007(db) 
+#read particular table from Access database file.
+t_paciente_DS<-sqlFetch(channel,"t_paciente") 
+#read particular table from Access database file.
+t_tarv_DS<-sqlFetch(channel,"t_tarv") 
+#do not forget this, otherwise you lock access database from editing.
+close(channel) 
+
+d1 <- sqldf('Select dataabertura, nid, sexo, idade FROM t_paciente_DS WHERE idade > 15 ')
+
+d2 <- sqldf("Select dataabertura, nid,t_paciente_DS.idade, sexo, datatarv FROM t_paciente_DS JOIN t_tarv_DS USING (nid) ")
+
+d3 <- sqldf("Select dataabertura, nid,t_paciente_DS.idade, sexo, datatarv FROM t_paciente_DS JOIN t_tarv_DS USING (nid)  GROUP BY nid")
