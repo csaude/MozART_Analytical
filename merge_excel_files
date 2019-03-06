@@ -1,0 +1,24 @@
+setwd("C://Your_path_to_the_files")
+path <- "C://Your_path_to_the_files"
+merge_file_name <- "C://Your_path_to_the_files//merged_file.xlsx"
+
+# Delete the merged_file
+fn <-"merged_file.xlsx"
+if (file.exists(fn)){
+  #Define the file name that will be deleted
+  file.remove(fn)}
+
+# Clear's the data frame
+df <- NULL
+
+filenames_list <- list.files(path= path, full.names=TRUE)
+
+All <- lapply(filenames_list,function(filename){
+  print(paste("Merging",filename,sep = " "))
+  read.xlsx(filename)
+})
+
+df <- do.call(rbind.data.frame, All)
+
+# Creates and writes the merged_file
+write.xlsx(df,merge_file_name)
