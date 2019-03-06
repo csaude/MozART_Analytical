@@ -1,3 +1,5 @@
+library(openxlsx)
+
 setwd("C://Your_path_to_the_files")
 path <- "C://Your_path_to_the_files"
 merge_file_name <- "C://Your_path_to_the_files//merged_file.xlsx"
