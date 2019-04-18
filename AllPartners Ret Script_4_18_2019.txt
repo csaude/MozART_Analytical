@@ -1,0 +1,61 @@
+#load relevant packages for data transformation, especially tidyverse
+#load package to read excel
+
+library(data.table)
+library(tidyverse)
+library(readxl)
+library(plyr)
+library(dplyr)
+
+##pull in an excel document with ALL partners info populated with column headings matching R code below 
+
+allpartners.clean <- read_excel("C:/Users/ovu4/Desktop/allpartners_rename_21Feb_20Mar.xlsx")
+
+#create one long format of values for all the indicator columns EXCEPT I22 as this doesn't need to be long format
+
+allpartners.long <- allpartners.clean %>%
+  gather(Disaggregate, Value, "I1_Total", "I1_PW", "I1_0-14", "I1_NPW_Ad","I2_Total", "I2_PW", "I2_0-14", "I2_NPW_Ad", "I3_Total", "I3_PW", "I3_0-14", "I3_NPW_Ad","I4_Total", "I4_PW", "I4_0-14", "I4_NPW_Ad", "I5_Total", "I5_PW", "I5_0-14", "I5_NPW_Ad","I6_Total", "I6_PW", "I6_0-14", "I6_NPW_Ad", "I8", "I9", "I10", "I11", "l21", "l23", "l24", "l25", "l26", "l27", "l28")
+   
+
+#duplicate disaggs column and name it attributes; 
+allpartners.long$Attribute = allpartners.long$Disaggregate
+
+#change attributes column to match correct disaggregate ("attribute") name
+#All Patients; Pregnant Women; 0-14; Non-Pregnant Adults (these are ind1-ind7 disaggs); Non-Pregnant, Non-BF Adults (cols I8,I9,I10,I11); Health facility (cols I21-28 not I22)
+
+allpartners.long$Attribute <- revalue(allpartners.long$Attribute, c("I1_Total"="All Patients", "I2_Total"="All Patients", "I3_Total"="All Patients", "I4_Total"="All Patients", "I5_Total"="All Patients", "I6_Total"="All Patients"))
+allpartners.long$Attribute <- revalue(allpartners.long$Attribute, c("I1_PW"="Pregnant Women", "I2_PW"="Pregnant Women", "I3_PW"="Pregnant Women", "I4_PW"="Pregnant Women", "I5_PW"="Pregnant Women", "I6_PW"="Pregnant Women"))
+allpartners.long$Attribute <- revalue(allpartners.long$Attribute, c("I1_0-14"="0-14", "I2_0-14"="0-14", "I3_0-14"="0-14", "I4_0-14"="0-14", "I5_0-14"="0-14", "I6_0-14"="0-14", "I7_0-14"="0-14"))
+allpartners.long$Attribute <- revalue(allpartners.long$Attribute, c("I1_NPW_Ad"="Non-Pregnant Adults", "I2_NPW_Ad"="Non-Pregnant Adults", "I3_NPW_Ad"="Non-Pregnant Adults", "I4_NPW_Ad"="Non-Pregnant Adults", "I5_NPW_Ad"="Non-Pregnant Adults", "I6_NPW_Ad"="Non-Pregnant Adults"))
+allpartners.long$Attribute <- revalue(allpartners.long$Attribute, c("I8"="Non-Pregnant, Non-BF Adults", "I9"="Non-Pregnant, Non-BF Adults", "I10"="Non-Pregnant, Non-BF Adults", "I11"="Non-Pregnant, Non-BF Adults"))
+allpartners.long$Attribute <- revalue(allpartners.long$Attribute, c("l21"="Health facility", "l23"="Health facility", "l24"="Health facility", "l25"="Health facility", "l26"="Health facility", "l27"="Health facility", "l28"="Health facility"))
+
+#change Disaggregates column to match correct indicator with disagges, ind1-ind7, and leave I8-etc alone since no disaggs
+allpartners.long$Disaggregate <- revalue(allpartners.long$Disaggregate, c("I1_Total"="ind1", "I2_Total"="ind2", "I3_Total"="ind3", "I4_Total"="ind4", "I5_Total"="ind5", "I6_Total"="ind6"))
+allpartners.long$Disaggregate <- revalue(allpartners.long$Disaggregate, c("I1_PW"="ind1", "I2_PW"="ind2", "I3_PW"="ind3", "I4_PW"="ind4", "I5_PW"="ind5", "I6_PW"="ind6"))
+allpartners.long$Disaggregate <- revalue(allpartners.long$Disaggregate, c("I1_0-14"="ind1", "I2_0-14"="ind2", "I3_0-14"="ind3", "I4_0-14"="ind4", "I5_0-14"="ind5", "I6_0-14"="ind6"))
+allpartners.long$Disaggregate <- revalue(allpartners.long$Disaggregate, c("I1_NPW_Ad"="ind1", "I2_NPW_Ad"="ind2", "I3_NPW_Ad"="ind3", "I4_NPW_Ad"="ind4", "I5_NPW_Ad"="ind5", "I6_NPW_Ad"="ind6"))
+
+#spread out to semi-wide format by disaggregates so ind1-ind7 and I8-I28 are all columns again w/ correct attributes assigned
+
+allpartners.wide.ind <- allpartners.long %>%
+  spread(Disaggregate, Value)
+
+#copy IPSL Code and rename it locationID
+allpartners.wide.ind$LocationID = allpartners.wide.ind$IPSL_code
+
+
+#rename partner to Activity column, rename "l0" to Database; rename Period to Reporting Period
+
+colnames(allpartners.wide.ind)[colnames(allpartners.wide.ind)=="l0"] <- "Database"
+colnames(allpartners.wide.ind)[colnames(allpartners.wide.ind)=="Period"] <- "Reporting Period"
+colnames(allpartners.wide.ind)[colnames(allpartners.wide.ind)=="Health Facility"] <- "Health_Facility"
+colnames(allpartners.wide.ind)[colnames(allpartners.wide.ind)=="Partner"] <- "Activity"
+
+
+#reorder to match final doc column order setcolorder(x, c("c", "b", "a"))
+allpartners.final <- setcolorder(allpartners.wide.ind, c("Activity", "Province", "District", "Health_Facility", "LocationID", "Type", "Reporting Period", "Database", "IPSL_code", "DATIM_code", "SISMA_code", "MI", "Attribute", "ind1", "ind2", "ind4", "ind5", "ind6", "I8", "I9", "I10", "I11", "l21", "l22", "l23", "l24", "l25", "l26", "l27", "l28"))
+
+
+write.csv(allpartners.final, file="allpartners_ret_site_4_18_2019.csv")
+#copy this over to folder you want it saved
