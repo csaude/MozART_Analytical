@@ -3,7 +3,7 @@ Analytical Datasets: Retention
 
 *These are working scripts requiring QC before they are ready for production*
 
-# SQL Query (RetentionCreation_RY_APR162019_V1.sql)
+## SQL Query (RetentionCreation_RY_APR162019_V1.sql)
 
 The SQL code can be run as-is inside of SQL Server Management Studio or in R using ODBC::dbGetQuery.
 
@@ -95,7 +95,7 @@ This is the working query based on the APR 2019 revised retention definitions. T
 
 *Note: Output requires QC!*
 
-# R Query (RetentionCreation_RY_APR162019_V1.R)
+## R Query (RetentionCreation_RY_APR162019_V1.R)
 
 The R code follows the same logic as the SQL query.
 
