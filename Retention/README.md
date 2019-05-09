@@ -1,7 +1,7 @@
 Analytical Datasets: Retention
 ===
 
-*These are working codes requiring QC before they are ready for production*
+*These are working scripts requiring QC before they are ready for production*
 
 # SQL Query (RetentionCreation_RY_APR162019_V1.sql)
 
