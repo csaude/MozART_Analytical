@@ -24,10 +24,10 @@ library(tidyverse)
 # NOTE: Your driver may be different! Check your computer's registry for SQL Server Driver
 connect_MozART <- DBI::dbConnect(odbc::odbc(),
                                  Driver   = "ODBC Driver 13 for SQL Server",
-                                 Server   = "APC-MZ1",
+                                 Server   = "SERVER NAME",
                                  Database = "Mozart",
                                  trusted_connection= "yes",
-                                 Port     = 1433)
+                                 Port     = 0000)
 
 
 
