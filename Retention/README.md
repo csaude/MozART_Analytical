@@ -3,7 +3,7 @@ Analytical Datasets: Retention
 
 *These are working scripts requiring QC before they are ready for production*
 
-## SQL Query (RetentionCreation_RY_APR162019_V1.sql)
+## SQL Query (Retention_Working_CDC_V7.sql)
 
 The SQL code can be run as-is inside of SQL Server Management Studio or in R using ODBC::dbGetQuery.
 
@@ -30,12 +30,7 @@ Notice the prefix "f." in front of the variables. These are what SQL calls alias
 Outcome_Date = dateadd(yy, 1, datainiciotarv)
 ```
 This snippet takes the "datainiciotarv" variable and adds one year to each initiation date using `dateadd()` to get the 12 month retention date.
-```
-gg.datainicio as DatainicioGAAC
 
-p.AccessFilePath as Caminho
-```
-The `as` command is used to rename variables. Here I am renaming the "datainicio" variable from the t_gaac table as "DatainicioGAAC" and "AccessFilePath" as "Caminho."
 
 ### INTO Statement
 
@@ -80,20 +75,27 @@ The rest of the SQL query is much of the same.
 
 ### Retention Flow Chart Coding
 ```
-SELECT *,
-Outcome = CASE WHEN ((datasaidatarv < MaxOfdataproxima) OR (datasaidatarv IS NULL) OR (datasaidatarv < MaxOfdataseguimento)) AND ((MaxOfdatatarv < dateadd(dd,90,datainiciotarv)) OR (MaxOfdataproxima < dateadd(dd,60,datainiciotarv)) OR (MaxOfdataseguimento < dateadd(dd, 90, datainiciotarv))) THEN 'Retained'
-WHEN ((codestado = 'ABANDONO') OR (codestado IS NULL) OR (MaxOfdataproximaconsulta > dateadd(mm, 10, datainiciotarv))) THEN 'LTFU'
-WHEN ((codestado = 'TRANSFERIDO PARA') AND (datasaidatarv < Outcome_Date)) THEN 'Transferred Out'
-WHEN ((codestado = 'OBITOU') AND (datasaidatarv < Outcome_Date)) THEN 'Dead'
-end
-INTO Sandbox.dbo.retention_cohort_2012_2019_final
-FROM Sandbox.dbo.retention_cohort_2012_2019
-WHERE datainiciotarv >= '2012'
-ORDER BY datainiciotarv asc
+CTE1 AS
+( 
+	SELECT *, 
+	CASE WHEN ((datasaidatarv < Max_datatarv) OR (datasaidatarv IS NULL) OR (datasaidatarv < Max_dataseguimento) OR(datasaidatarv > Outcome_Date)) AND 
+	((Max_datatarv > dateadd(dd,-90,Outcome_Date) AND Max_datatarv <= Outcome_Date) OR (Max_dataproxima > dateadd(dd,-60,Outcome_Date) AND Max_dataproxima <= Outcome_Date) OR (Max_dataseguimento > dateadd(dd, -90, Outcome_Date) AND Max_dataseguimento <= Outcome_Date)) THEN 'Retained'
+	Else 'Not Retained'
+	END AS [Retained_Status]
+	FROM CTE0
+),
+CTE2 AS
+( 
+	SELECT *, CASE WHEN Retained_Status = 'Not Retained' AND ((codestado = 'ABANDONO') OR (codestado IS NULL) AND (datasaidatarv < Outcome_Date)) THEN 'LTFU'
+	WHEN Retained_Status = 'Not Retained' AND ((codestado = 'TRANSFERIDO PARA') AND (datasaidatarv < Outcome_Date)) THEN 'Transferred Out'
+	WHEN Retained_Status = 'Not Retained' AND ((codestado = 'OBITOU') AND (datasaidatarv < Outcome_Date)) THEN 'Dead'
+	WHEN Retained_Status = 'Not Retained' AND ((codestado IS NULL)) THEN 'LTFU'
+	WHEN Retained_Status = 'Retained' Then 'Retained'
+	END AS [Outcome]
+	FROM CTE1)
 ```
-This is the working query based on the APR 2019 revised retention definitions. This query codes the 12 month retention outcomes for each nid as an additional column "Outcome" in the retention table.
+This is the working query based on the APR 2019 revised retention definitions.
 
-*Note: Output requires QC!*
 
 ## R Query (RetentionCreation_RY_APR162019_V1.R)
 
