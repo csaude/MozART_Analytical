@@ -3,7 +3,7 @@ Analytical Datasets: Retention
 
 *These are working scripts requiring QC before they are ready for production*
 
-## SQL Query (Retention_Working_CDC_V7.sql)
+## SQL Query
 
 The SQL code can be run as-is inside of SQL Server Management Studio or in R using ODBC::dbGetQuery.
 
