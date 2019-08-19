@@ -97,9 +97,9 @@ CTE2 AS
 This is the working query based on the APR 2019 revised retention definitions.
 
 
-## R Query (RetentionCreation_RY_APR162019_V1.R)
+## Querying in R
 
-The R code follows the same logic as the SQL query.
+The R code would follow the same logic as the SQL query.
 
 ### Required Libraries
 ```
@@ -158,7 +158,7 @@ patiente_hdd_tarv_seguimento_gaac <- left_join(patiente_hdd_tarv_seguimento, t_g
 Here, I perform left joins to the patient table as above.
 
 ### Retention Outcome Coding
-*Work in progress pending SQL QC*
+Outcomes will follow the same conditional statements as the SQL query.
 
 ===
 
