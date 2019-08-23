@@ -1,0 +1,248 @@
+-rename the following columns in every month table
+-TX_CURR, Outcome, Evaluation Date, dataproxima, dataproximaconsulta, Gravidez, maxdatatarv to have month
+-Script to join pair of tables (two months), make sure to change every month name and save new table with second month's name
+-include columns from first month for those not changed in step 2, include BOTH months for columns with months
+
+
+
+-Oct to Nov Pair Script
+-----------------------
+
+SELECT dbo.TX_CURR_test_Oct18.nid, dbo.TX_CURR_test_Oct18.HdD, dbo.TX_CURR_test_Oct18.Provincia, dbo.TX_CURR_test_Oct18.Distrito,
+      dbo.TX_CURR_test_Oct18.designacao, dbo.TX_CURR_test_Oct18.sexo 
+	  ,dbo.TX_CURR_test_Oct18.datanasc, dbo.TX_CURR_test_Oct18.idadeiniciotarv
+	  ,dbo.TX_CURR_test_Oct18.datainiciotarv, dbo.TX_CURR_test_Oct18.Year_Inicio, 
+	  Evaluation_Date_Oct, Evaluation_Date_Nov
+      ,dbo.TX_CURR_test_Oct18.datadiagnostico
+      ,dbo.TX_CURR_test_Oct18.datasaidatarv
+      ,dbo.TX_CURR_test_Oct18.codestado
+      ,Max_datatarv_Oct, Max_datatarv_Nov
+      ,dataproxima_Oct, dataproxima_Nov
+      ,dbo.TX_CURR_test_Oct18.Max_dataseguimento
+      ,dataproximaconsulta_Oct, dataproximaconsulta_Nov
+      ,Gravidez_Oct,Gravidez_Nov
+      ,Outcome_Oct, Outcome_NOV, TX_CURR_OCT, TX_CURR_NOV, 
+CASE WHEN TX_CURR_OCT = 'Active'
+ AND
+TX_CURR_NOV = 'Not Active'
+THEN
+'Dropped Out' 
+WHEN
+TX_CURR_NOV = 'Active'
+THEN
+'Active' 
+
+ELSE 'Not Active'
+
+ END AS NovDropOuts
+INTO Sandbox.dbo.TX_CURR_final_Nov18
+FROM TX_CURR_test_Oct18
+FULL OUTER JOIN TX_CURR_test_Nov18
+ON TX_CURR_test_Oct18.nid = TX_CURR_test_Nov18.nid AND TX_CURR_test_Oct18.HdD = TX_CURR_test_Nov18.HdD
+
+
+
+-Nov to Dec Pair Script
+-----------------------
+
+SELECT dbo.TX_CURR_test_Nov18.nid, dbo.TX_CURR_test_Nov18.HdD, dbo.TX_CURR_test_Nov18.Provincia, dbo.TX_CURR_test_Nov18.Distrito,
+      dbo.TX_CURR_test_Nov18.designacao, dbo.TX_CURR_test_Nov18.sexo 
+	  ,dbo.TX_CURR_test_Nov18.datanasc, dbo.TX_CURR_test_Nov18.idadeiniciotarv
+	  ,dbo.TX_CURR_test_Nov18.datainiciotarv, dbo.TX_CURR_test_Nov18.Year_Inicio, 
+	  Evaluation_Date_Nov, Evaluation_Date_Dec
+      ,dbo.TX_CURR_test_Nov18.datadiagnostico
+      ,dbo.TX_CURR_test_Nov18.datasaidatarv
+      ,dbo.TX_CURR_test_Nov18.codestado
+      ,Max_datatarv_Nov, Max_datatarv_Dec
+      ,dataproxima_Nov, dataproxima_Dec
+      ,dbo.TX_CURR_test_Nov18.Max_dataseguimento
+      ,dataproximaconsulta_Nov, dataproximaconsulta_Dec
+      ,Gravidez_Nov,Gravidez_Dec
+      ,Outcome_Nov, Outcome_Dec, TX_CURR_NOV, TX_CURR_DEC, 
+CASE WHEN TX_CURR_NOV = 'Active'
+ AND
+TX_CURR_DEC = 'Not Active'
+THEN
+'Dropped Out' 
+WHEN
+TX_CURR_DEC = 'Active'
+THEN
+'Active' 
+
+ELSE 'Not Active'
+
+ END AS DecDropOuts
+INTO Sandbox.dbo.TX_CURR_final_Dec18
+FROM TX_CURR_test_Nov18
+FULL OUTER JOIN TX_CURR_test_Dec18
+ON TX_CURR_test_Nov18.nid = TX_CURR_test_Dec18.nid AND TX_CURR_test_Nov18.HdD = TX_CURR_test_Dec18.HdD
+
+-Dec to Jan Pair Script
+-----------------------
+
+SELECT dbo.TX_CURR_test_Dec18.nid, dbo.TX_CURR_test_Dec18.HdD, dbo.TX_CURR_test_Dec18.Provincia, dbo.TX_CURR_test_Dec18.Distrito,
+      dbo.TX_CURR_test_Dec18.designacao, dbo.TX_CURR_test_Dec18.sexo 
+	  ,dbo.TX_CURR_test_Dec18.datanasc, dbo.TX_CURR_test_Dec18.idadeiniciotarv
+	  ,dbo.TX_CURR_test_Dec18.datainiciotarv, dbo.TX_CURR_test_Dec18.Year_Inicio, 
+	  Evaluation_Date_Dec, Evaluation_Date_Jan
+      ,dbo.TX_CURR_test_Dec18.datadiagnostico
+      ,dbo.TX_CURR_test_Dec18.datasaidatarv
+      ,dbo.TX_CURR_test_Dec18.codestado
+      ,Max_datatarv_Dec, Max_datatarv_Jan
+      ,dataproxima_Dec, dataproxima_Jan
+      ,dbo.TX_CURR_test_Dec18.Max_dataseguimento
+      ,dataproximaconsulta_Dec, dataproximaconsulta_Jan
+      ,Gravidez_Dec,Gravidez_Jan
+      ,Outcome_Dec, Outcome_Jan, TX_CURR_DEC, TX_CURR_JAN, 
+CASE WHEN TX_CURR_OCT = 'Active'
+ AND
+TX_CURR_NOV = 'Not Active'
+THEN
+'Dropped Out' 
+WHEN
+TX_CURR_NOV = 'Active'
+THEN
+'Active' 
+
+ELSE 'Not Active'
+
+ END AS JanDropOuts
+INTO Sandbox.dbo.TX_CURR_final_Jan19
+FROM TX_CURR_test_Dec18
+FULL OUTER JOIN TX_CURR_test_Jan19
+ON TX_CURR_test_Dec18.nid = TX_CURR_test_Jan19.nid AND TX_CURR_test_Dec18.HdD = TX_CURR_test_Jan19.HdD
+
+-Jan to Feb Pair Script
+-----------------------
+
+SELECT dbo.TX_CURR_test_Jan19.nid, dbo.TX_CURR_test_Jan19.HdD, dbo.TX_CURR_test_Jan19.Provincia, dbo.TX_CURR_test_Jan19.Distrito,
+      dbo.TX_CURR_test_Jan19.designacao, dbo.TX_CURR_test_Jan19.sexo 
+	  ,dbo.TX_CURR_test_Jan19.datanasc, dbo.TX_CURR_test_Jan19.idadeiniciotarv
+	  ,dbo.TX_CURR_test_Jan19.datainiciotarv, dbo.TX_CURR_test_Jan19.Year_Inicio, 
+	  Evaluation_Date_Jan, Evaluation_Date_Feb
+      ,dbo.TX_CURR_test_Jan19.datadiagnostico
+      ,dbo.TX_CURR_test_Jan19.datasaidatarv
+      ,dbo.TX_CURR_test_Jan19.codestado
+      ,Max_datatarv_Jan, Max_datatarv_Feb
+      ,dataproxima_Jan, dataproxima_Feb
+      ,dbo.TX_CURR_test_Jan19.Max_dataseguimento
+      ,dataproximaconsulta_Jan, dataproximaconsulta_Feb
+      ,Gravidez_Jan,Gravidez_Feb
+      ,Outcome_Jan, Outcome_Feb, TX_CURR_JAN, TX_CURR_FEB, 
+CASE WHEN TX_CURR_JAN = 'Active'
+ AND
+TX_CURR_FEB = 'Not Active'
+THEN
+'Dropped Out' ELSE 'Active' END AS FebDropOuts
+INTO Sandbox.dbo.TX_CURR_final_Feb19
+FROM TX_CURR_test_Jan19
+FULL OUTER JOIN TX_CURR_test_Feb19
+ON TX_CURR_test_Jan19.nid = TX_CURR_test_Feb19.nid AND TX_CURR_test_Jan19.HdD = TX_CURR_test_Feb19.HdD
+
+-Feb to Mar Pair Script
+-----------------------
+
+SELECT dbo.TX_CURR_test_Feb19.nid, dbo.TX_CURR_test_Feb19.HdD, dbo.TX_CURR_test_Feb19.Provincia, dbo.TX_CURR_test_Feb19.Distrito,
+      dbo.TX_CURR_test_Feb19.designacao, dbo.TX_CURR_test_Feb19.sexo 
+	  ,dbo.TX_CURR_test_Feb19.datanasc, dbo.TX_CURR_test_Feb19.idadeiniciotarv
+	  ,dbo.TX_CURR_test_Feb19.datainiciotarv, dbo.TX_CURR_test_Feb19.Year_Inicio, 
+	  Evaluation_Date_Feb, Evaluation_Date_Mar
+      ,dbo.TX_CURR_test_Feb19.datadiagnostico
+      ,dbo.TX_CURR_test_Feb19.datasaidatarv
+      ,dbo.TX_CURR_test_Feb19.codestado
+      ,Max_datatarv_Feb, Max_datatarv_Mar
+      ,dataproxima_Feb, dataproxima_Mar
+      ,dbo.TX_CURR_test_Feb19.Max_dataseguimento
+      ,dataproximaconsulta_Feb, dataproximaconsulta_Mar
+      ,Gravidez_Feb,Gravidez_Mar
+      ,Outcome_Feb, Outcome_Mar, TX_CURR_FEB, TX_CURR_MAR, 
+CASE WHEN TX_CURR_FEB = 'Active'
+ AND
+TX_CURR_MAR = 'Not Active'
+THEN
+'Dropped Out' ELSE 'Active' END AS MarDropOuts
+INTO Sandbox.dbo.TX_CURR_final_Mar19
+FROM TX_CURR_test_Feb19
+FULL OUTER JOIN TX_CURR_test_Mar19
+ON TX_CURR_test_Feb19.nid = TX_CURR_test_Mar19.nid AND TX_CURR_test_Feb19.HdD = TX_CURR_test_Mar19.HdD
+
+-Mar to Apr Pair Script
+-----------------------
+
+SELECT dbo.TX_CURR_test_Mar19.nid, dbo.TX_CURR_test_Mar19.HdD, dbo.TX_CURR_test_Mar19.Provincia, dbo.TX_CURR_test_Mar19.Distrito,
+      dbo.TX_CURR_test_Mar19.designacao, dbo.TX_CURR_test_Mar19.sexo 
+	  ,dbo.TX_CURR_test_Mar19.datanasc, dbo.TX_CURR_test_Mar19.idadeiniciotarv
+	  ,dbo.TX_CURR_test_Mar19.datainiciotarv, dbo.TX_CURR_test_Mar19.Year_Inicio, 
+	  Evaluation_Date_Mar, Evaluation_Date_Apr
+      ,dbo.TX_CURR_test_Mar19.datadiagnostico
+      ,dbo.TX_CURR_test_Mar19.datasaidatarv
+      ,dbo.TX_CURR_test_Mar19.codestado
+      ,Max_datatarv_Mar, Max_datatarv_Apr
+      ,dataproxima_Mar, dataproxima_Apr
+      ,dbo.TX_CURR_test_Mar19.Max_dataseguimento
+      ,dataproximaconsulta_Mar, dataproximaconsulta_Apr
+      ,Gravidez_Mar,Gravidez_Apr
+      ,Outcome_Mar, Outcome_Apr, TX_CURR_MAR, TX_CURR_APR, 
+CASE WHEN TX_CURR_MAR = 'Active'
+ AND
+TX_CURR_APR = 'Not Active'
+THEN
+'Dropped Out' ELSE 'Active' END AS AprDropOuts
+INTO Sandbox.dbo.TX_CURR_final_Apr19
+FROM TX_CURR_test_Mar19
+FULL OUTER JOIN TX_CURR_test_Apr19
+ON TX_CURR_test_Mar19.nid = TX_CURR_test_Apr19.nid AND TX_CURR_test_Mar19.HdD = TX_CURR_test_Apr19.HdD
+
+-Apr to May Pair Script
+-----------------------
+
+SELECT dbo.TX_CURR_test_Apr19.nid, dbo.TX_CURR_test_Apr19.HdD, dbo.TX_CURR_test_Apr19.Provincia, dbo.TX_CURR_test_Apr19.Distrito,
+      dbo.TX_CURR_test_Apr19.designacao, dbo.TX_CURR_test_Apr19.sexo 
+	  ,dbo.TX_CURR_test_Apr19.datanasc, dbo.TX_CURR_test_Apr19.idadeiniciotarv
+	  ,dbo.TX_CURR_test_Apr19.datainiciotarv, dbo.TX_CURR_test_Apr19.Year_Inicio, 
+	  Evaluation_Date_Apr, Evaluation_Date_May
+      ,dbo.TX_CURR_test_Apr19.datadiagnostico
+      ,dbo.TX_CURR_test_Apr19.datasaidatarv
+      ,dbo.TX_CURR_test_Apr19.codestado
+      ,Max_datatarv_Apr, Max_datatarv_May
+      ,dataproxima_Apr, dataproxima_May
+      ,dbo.TX_CURR_test_Apr19.Max_dataseguimento
+      ,dataproximaconsulta_Apr, dataproximaconsulta_May
+      ,Gravidez_Apr,Gravidez_May
+      ,Outcome_Apr, Outcome_May, TX_CURR_APR, TX_CURR_MAY, 
+CASE WHEN TX_CURR_APR = 'Active'
+ AND
+TX_CURR_MAY = 'Not Active'
+THEN
+'Dropped Out' ELSE 'Active' END AS MayDropOuts
+INTO Sandbox.dbo.TX_CURR_final_May19
+FROM TX_CURR_test_Apr19
+FULL OUTER JOIN TX_CURR_test_May19
+ON TX_CURR_test_Apr19.nid = TX_CURR_test_May19.nid AND TX_CURR_test_Apr19.HdD = TX_CURR_test_May19.HdD
+
+-May to June Pair Script
+-----------------------
+
+SELECT dbo.TX_CURR_test_May19.nid, dbo.TX_CURR_test_May19.HdD, dbo.TX_CURR_test_May19.Provincia, dbo.TX_CURR_test_May19.Distrito,
+      dbo.TX_CURR_test_May19.designacao, dbo.TX_CURR_test_May19.sexo 
+	  ,dbo.TX_CURR_test_May19.datanasc, dbo.TX_CURR_test_May19.idadeiniciotarv
+	  ,dbo.TX_CURR_test_May19.datainiciotarv, dbo.TX_CURR_test_May19.Year_Inicio, 
+	  Evaluation_Date_May, Evaluation_Date_Jun
+      ,dbo.TX_CURR_test_May19.datadiagnostico
+      ,dbo.TX_CURR_test_May19.datasaidatarv
+      ,dbo.TX_CURR_test_May19.codestado
+      ,Max_datatarv_May, Max_datatarv_Jun
+      ,dataproxima_May, dataproxima_Jun
+      ,dbo.TX_CURR_test_May19.Max_dataseguimento
+      ,dataproximaconsulta_May, dataproximaconsulta_Jun
+      ,Gravidez_May,Gravidez_Jun
+      ,Outcome_May, Outcome_Jun, TX_CURR_MAY, TX_CURR_JUN, 
+CASE WHEN TX_CURR_MAY = 'Active'
+ AND
+TX_CURR_JUN = 'Not Active'
+THEN
+'Dropped Out' ELSE 'Active' END AS JunDropOuts
+INTO Sandbox.dbo.TX_CURR_final_Jun19
+FROM TX_CURR_test_May19
+FULL OUTER JOIN TX_CURR_test_Jun19
+ON TX_CURR_test_May19.nid = TX_CURR_test_Jun19.nid AND TX_CURR_test_May19.HdD = TX_CURR_test_Jun19.HdD
