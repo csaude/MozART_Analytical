@@ -19,10 +19,12 @@ AS
 WITH CTE0 AS
 (
 	SELECT DISTINCT 
-	facility.HdD, facility.Provincia, facility.Distrito, facility.designacao,
-	person.nid, person.sexo, person.datanasc, person.idade as idadeiniciotarv, person.datainiciotarv, YEAR(person.datainiciotarv) as Cohort_Year, USG_Year, tt.Outcome_Date, person.datadiagnostico, person.datasaidatarv, person.codestado,
-	tt.Max_datatarv, tt.dataproxima,
-	ss.Max_dataseguimento, ss.dataproximaconsulta, person.Gravidez
+	person.HdD, facility.Provincia as Province, facility.Distrito as District, facility.designacao as Health_Facility,
+	person.nid as NID, person.sexo as Sex, person.datanasc as DOB, person.datadiagnostico as Diagnosis_Date,
+	person.idade as Initiation_Age, person.datainiciotarv as Initiation_Date, YEAR(person.datainiciotarv) as Cohort_Year, USG_Year, 
+	tt.Outcome_Date, person.datasaidatarv as Exit_Date, person.codestado as Last_Status_Alltime,
+	tt.Max_datatarv as Last_Drug_Pickup_Date, tt.dataproxima as Next_Drug_Pickup_Date,
+	ss.Max_dataseguimento as Last_Consultation_Date, ss.dataproximaconsulta as Next_Consultation_Date
 
 	FROM
 	(SELECT nid, sexo, cast(datanasc as date) as datanasc, idade, hdd, codproveniencia, cast(datainiciotarv as date) as datainiciotarv, cast(datadiagnostico as date) as datadiagnostico, codestado, cast(datasaidatarv as date) as datasaidatarv, AccessFilePath,
