@@ -9,11 +9,11 @@
 ---- with evaluation dates beyond current date
 ---- =========================================================================================================
 
-IF EXISTS (SELECT * FROM sys.all_objects WHERE object_id = OBJECT_ID('[dbo].[RetentionGenerator]') AND type IN ('P', 'PC', 'RF', 'X'))
+IF EXISTS (SELECT * FROM sys.all_objects WHERE object_id = OBJECT_ID('[dbo].[RetentionGenerator_12m]') AND type IN ('P', 'PC', 'RF', 'X'))
   DROP PROCEDURE [dbo].[RetentionGenerator]
 GO
 
-CREATE PROCEDURE [dbo].[RetentionGenerator] @RetentionType INTEGER, @CreationDate Date
+CREATE PROCEDURE [dbo].[RetentionGenerator_12m] @RetentionType INTEGER, @CreationDate Date
 AS
 
 WITH CTE0 AS
@@ -100,7 +100,7 @@ CTE2 AS
 	FROM CTE1)
 
 SELECT *
-INTO Sandbox.dbo.retention_cohort_2012_2019
+INTO Sandbox.dbo.Retention_12m
 FROM CTE2
 WHERE datainiciotarv >= '2012' AND Outcome_Date IS NOT NULL
 ORDER BY nid asc
