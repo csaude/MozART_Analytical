@@ -150,7 +150,7 @@ LEFT JOIN
 			WHERE codexame = 'CD4' AND codparametro = 'ABSOLUTO' AND dataresultado IS NOT NULL
 		) cdNextInt 
 	WHERE next_rank = '2'
-) cdNext
+) cdNext -- Gets the next date and result of 
 ON cdFirst.nid = cdNext.nid
 LEFT JOIN
 t_paciente tp
@@ -161,6 +161,130 @@ ON tp.hdd = hd.HdD
 WHERE first_rank = '1'
 
 
+------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------- Matrices ---------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------------
+
+-- 1) Date Matrix
+-- 2) Absolute CD4 Matrix
+-- 3) Categorized CD4 Matrix
+-- 4) Percentage CD4 Matrix (May not match Absolute CD4 Matrix and may require a separate Date Matrix)
+
+------------------------------------------------------ CD4 Date Matrix  ------------------------------------------------------
+
+-- NID CD4 Date Matrix
+--SELECT DISTINCT nid, codexame, CAST(dataresultado AS DATE) AS result_date,
+--DENSE_RANK() OVER(PARTITION BY nid, codexame, codparametro ORDER BY CAST(dataresultado AS DATE) ASC) AS ranked, AccessFilePath
+--FROM t_resultadoslaboratorio
+--WHERE codexame = 'CD4' AND codparametro = 'ABSOLUTO' AND dataresultado IS NOT NULL
+--ORDER BY nid, ranked
+
+-- Dynamic Pivot to create wide visit format
+DECLARE @Columns as VARCHAR(MAX)
+SELECT @Columns =
+COALESCE(@Columns + ', ','') + QUOTENAME(ranked)
+FROM
+   (
+   SELECT DISTINCT DENSE_RANK() OVER(PARTITION BY nid, codexame ORDER BY CAST(dataresultado AS DATE) ASC) AS ranked
+	FROM t_resultadoslaboratorio
+	WHERE codexame = 'CD4' AND codparametro = 'ABSOLUTO' AND dataresultado IS NOT NULL
+   ) AS CD4A
+   ORDER BY CD4A.ranked
+ SELECT @Columns
+
+DECLARE @SQL as VARCHAR(MAX)
+SET @SQL = 'SELECT nid, ' + @Columns + '
+FROM
+(
+   SELECT DISTINCT nid, codexame, CAST(dataresultado AS DATE) AS result_date,
+	DENSE_RANK() OVER(PARTITION BY nid, codexame, codparametro ORDER BY CAST(dataresultado AS DATE) ASC) AS ranking
+	FROM t_resultadoslaboratorio
+	WHERE codexame = ''CD4'' AND codparametro = ''ABSOLUTO'' AND dataresultado IS NOT NULL
+) as PivotData
+PIVOT
+(
+   MAX(result_date)
+   FOR ranking IN (' + @Columns + ')
+) AS PivotResult
+ORDER BY nid'
+
+EXEC(@SQL)
 
 
 
+--------------------------------------------------------------- NID CD4 Absolute Result Matrix -------------------------------------------------------------
+--SELECT DISTINCT nid, codexame, resultado as result_absolute,
+--DENSE_RANK() OVER(PARTITION BY nid, codexame, codparametro ORDER BY CAST(dataresultado AS DATE) ASC) AS ranked, AccessFilePath
+--FROM t_resultadoslaboratorio
+--WHERE codexame = 'CD4' AND codparametro = 'ABSOLUTO' AND dataresultado IS NOT NULL
+--ORDER BY nid, ranked
+
+-- Dynamic Pivot to create wide visit format
+DECLARE @Columns as VARCHAR(MAX)
+SELECT @Columns =
+COALESCE(@Columns + ', ','') + QUOTENAME(ranked)
+FROM
+   (
+   SELECT DISTINCT DENSE_RANK() OVER(PARTITION BY nid, codexame ORDER BY CAST(dataresultado AS DATE) ASC) AS ranked
+	FROM t_resultadoslaboratorio
+	WHERE codexame = 'CD4' AND codparametro = 'ABSOLUTO' AND dataresultado IS NOT NULL
+   ) AS CD4A
+   ORDER BY CD4A.ranked
+ SELECT @Columns
+
+DECLARE @SQL as VARCHAR(MAX)
+SET @SQL = 'SELECT nid, ' + @Columns + '
+FROM
+(
+   SELECT DISTINCT nid, codexame, resultado as result_absolute,
+	DENSE_RANK() OVER(PARTITION BY nid, codexame, codparametro ORDER BY CAST(dataresultado AS DATE) ASC) AS ranking
+	FROM t_resultadoslaboratorio
+	WHERE codexame = ''CD4'' AND codparametro = ''ABSOLUTO'' AND dataresultado IS NOT NULL
+) as PivotData
+PIVOT
+(
+   MAX(result_absolute)
+   FOR ranking IN (' + @Columns + ')
+) AS PivotResult
+ORDER BY nid'
+
+EXEC(@SQL)
+
+------------------------------------------------------------- NID CD4 Coded Absolute Result Matrix -------------------------------------------------------------
+
+-- Dynamic Pivot to create wide visit format
+DECLARE @Columns as VARCHAR(MAX)
+SELECT @Columns =
+COALESCE(@Columns + ', ','') + QUOTENAME(ranked)
+FROM
+   (
+   SELECT DISTINCT DENSE_RANK() OVER(PARTITION BY nid, codexame ORDER BY CAST(dataresultado AS DATE) ASC) AS ranked
+	FROM t_resultadoslaboratorio
+	WHERE codexame = 'CD4' AND codparametro = 'ABSOLUTO' AND dataresultado IS NOT NULL
+   ) AS CD4A
+   ORDER BY CD4A.ranked
+ SELECT @Columns
+
+DECLARE @SQL as VARCHAR(MAX)
+SET @SQL = 'SELECT nid, ' + @Columns + '
+FROM
+(
+   SELECT DISTINCT nid, codexame, CASE 
+	WHEN resultado < 200 THEN ''SEVERE IMMUNOSUPPRESION''
+	WHEN resultado between 200 AND 349 THEN ''ADVANCED IMMUNOSUPPRESION''
+	WHEN resultado between 350 AND 499 THEN ''MILD IMMUNOSUPPRESION''
+	WHEN resultado >= 500 THEN ''NOT SIGNIFICANT IMMUNOSUPPRESION''
+	ELSE NULL
+	END AS severity,
+	DENSE_RANK() OVER(PARTITION BY nid, codexame, codparametro ORDER BY CAST(dataresultado AS DATE) ASC) AS ranking
+	FROM t_resultadoslaboratorio
+	WHERE codexame = ''CD4'' AND codparametro = ''ABSOLUTO'' AND dataresultado IS NOT NULL
+) as PivotData
+PIVOT
+(
+   MAX(severity)
+   FOR ranking IN (' + @Columns + ')
+) AS PivotResult
+ORDER BY nid'
+
+EXEC(@SQL)
