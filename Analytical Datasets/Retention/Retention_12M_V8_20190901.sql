@@ -86,7 +86,7 @@ CTE1 AS
 	((Max_datatarv > dateadd(dd,-90,Outcome_Date) AND Max_datatarv <= Outcome_Date) OR (dataproxima > dateadd(dd,-60,Outcome_Date) AND dataproxima <= Outcome_Date) OR (Max_dataseguimento > dateadd(dd, -90, Outcome_Date) AND Max_dataseguimento <= Outcome_Date)) THEN 'Retained'
 	WHEN Outcome_Date > @CreationDate Then 'Not Evaluated'
 	Else 'Not Retained'
-	END AS [Retained_Status]
+	END AS [Retained_Status_12m]
 	FROM CTE0
 ),
 CTE2 AS
@@ -98,7 +98,7 @@ CTE2 AS
 	WHEN Retained_Status = 'Retained' Then 'Retained'
 	WHEN Retained_Status = 'Not Evaluated' Then 'Not Evaluated'
 	ELSE 'LTFU'
-	END AS [Outcome]
+	END AS [Outcome_12m]
 	FROM CTE1)
 
 SELECT *
