@@ -10,7 +10,11 @@
 ---- =========================================================================================================
 
 IF EXISTS (SELECT * FROM sys.all_objects WHERE object_id = OBJECT_ID('[dbo].[RetentionGenerator_12m]') AND type IN ('P', 'PC', 'RF', 'X'))
-  DROP PROCEDURE [dbo].[RetentionGenerator]
+  DROP PROCEDURE [dbo].[RetentionGenerator_12m]
+GO
+
+IF OBJECT_ID('[Sandbox].[dbo].[Retention_12m]', N'U') IS NOT NULL
+  DROP TABLE [Sandbox].[dbo].[Retention_12m]
 GO
 
 CREATE PROCEDURE [dbo].[RetentionGenerator_12m] @RetentionType INTEGER, @CreationDate Date
@@ -22,7 +26,7 @@ WITH CTE0 AS
 	person.HdD, facility.Provincia as Province, facility.Distrito as District, facility.designacao as Health_Facility,
 	person.nid as NID, person.sexo as Sex, person.datanasc as DOB, person.datadiagnostico as Diagnosis_Date,
 	person.idade as Initiation_Age, person.datainiciotarv as Initiation_Date, YEAR(person.datainiciotarv) as Cohort_Year, USG_Year, 
-	tt.Outcome_Date, person.datasaidatarv as Exit_Date, person.codestado as Last_Status_Alltime,
+	tt.Outcome_Date, person.datasaidatarv as Exit_Date, person.codestado as Last_Status,
 	tt.Max_datatarv as Last_Drug_Pickup_Date, tt.dataproxima as Next_Drug_Pickup_Date,
 	ss.Max_dataseguimento as Last_Consultation_Date, ss.dataproximaconsulta as Next_Consultation_Date
 
@@ -82,21 +86,27 @@ WITH CTE0 AS
 CTE1 AS
 ( 
 	SELECT *, 
-	CASE WHEN ((datasaidatarv < Max_datatarv) OR (datasaidatarv IS NULL) OR (datasaidatarv < Max_dataseguimento) OR(datasaidatarv > Outcome_Date)) AND 
-	((Max_datatarv > dateadd(dd,-90,Outcome_Date) AND Max_datatarv <= Outcome_Date) OR (dataproxima > dateadd(dd,-60,Outcome_Date) AND dataproxima <= Outcome_Date) OR (Max_dataseguimento > dateadd(dd, -90, Outcome_Date) AND Max_dataseguimento <= Outcome_Date)) THEN 'Retained'
+	CASE 
 	WHEN Outcome_Date > @CreationDate Then 'Not Evaluated'
-	Else 'Not Retained'
+	WHEN ((Exit_Date < Last_Drug_Pickup_Date) OR (Exit_Date IS NULL) OR (Exit_Date < Last_Consultation_Date) OR(Exit_Date > Outcome_Date)) AND 
+	(
+	(Last_Drug_Pickup_Date > dateadd(dd,-90,Outcome_Date) AND 
+	Last_Drug_Pickup_Date <= Outcome_Date) OR (Next_Drug_Pickup_Date > dateadd(dd,-60,Outcome_Date) AND 
+	Next_Drug_Pickup_Date <= Outcome_Date) OR (Last_Consultation_Date > dateadd(dd, -90, Outcome_Date) AND 
+	Last_Consultation_Date <= Outcome_Date)) 
+	THEN 'Retained'
+	ELSE 'Not Retained'
 	END AS [Retained_Status_12m]
 	FROM CTE0
 ),
 CTE2 AS
 ( 
-	SELECT *, CASE WHEN Retained_Status = 'Not Retained' AND ((codestado = 'ABANDONO') OR (codestado IS NULL) AND (datasaidatarv < Outcome_Date)) THEN 'LTFU'
-	WHEN Retained_Status = 'Not Retained' AND ((codestado = 'TRANSFERIDO PARA') AND (datasaidatarv < Outcome_Date)) THEN 'Transferred Out'
-	WHEN Retained_Status = 'Not Retained' AND ((codestado = 'OBITOU') AND (datasaidatarv < Outcome_Date)) THEN 'Dead'
-	WHEN Retained_Status = 'Not Retained' AND ((codestado IS NULL)) THEN 'LTFU'
-	WHEN Retained_Status = 'Retained' Then 'Retained'
-	WHEN Retained_Status = 'Not Evaluated' Then 'Not Evaluated'
+	SELECT *, CASE WHEN Retained_Status_12m = 'Not Retained' AND ((Last_Status = 'ABANDONO') OR (Last_Status IS NULL) AND (Exit_Date < Outcome_Date)) THEN 'LTFU'
+	WHEN Retained_Status_12m = 'Not Retained' AND ((Last_Status = 'TRANSFERIDO PARA') AND (Exit_Date < Outcome_Date)) THEN 'Transferred Out'
+	WHEN Retained_Status_12m = 'Not Retained' AND ((Last_Status = 'OBITOU') AND (Exit_Date < Outcome_Date)) THEN 'Dead'
+	WHEN Retained_Status_12m = 'Not Retained' AND ((Last_Status IS NULL)) THEN 'LTFU'
+	WHEN Retained_Status_12m = 'Retained' THEN 'Retained'
+	WHEN Retained_Status_12m = 'Not Evaluated' THEN 'Not Evaluated'
 	ELSE 'LTFU'
 	END AS [Outcome_12m]
 	FROM CTE1)
@@ -104,8 +114,8 @@ CTE2 AS
 SELECT *
 INTO Sandbox.dbo.Retention_12m
 FROM CTE2
-WHERE datainiciotarv >= '2012' AND Outcome_Date IS NOT NULL
+WHERE Initiation_Date >= '2012' AND 
+Outcome_Date IS NOT NULL AND 
+Initiation_Date IS NOT NULL AND 
+Last_Drug_Pickup_Date >= Initiation_Date
 ORDER BY nid asc
-
-
-Go
