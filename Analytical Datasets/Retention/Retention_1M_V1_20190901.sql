@@ -100,7 +100,7 @@ CTE1 AS
 		(Last_Consultation_Date <= Outcome_Date AND Last_Consultation_Date!= Initiation_Date)
 	) THEN 'Retained'
 	ELSE 'Not Retained'
-	END AS [Retained_Status]
+	END AS [Retained_Status_1m]
 	FROM CTE0
 ),
 CTE2 AS
@@ -113,7 +113,7 @@ CTE2 AS
 	WHEN Retained_Status = 'Retained' THEN 'Retained'
 	WHEN Retained_Status = 'Not Evaluated' THEN 'Not Evaluated'
 	ELSE 'LTFU'
-	END AS [Outcome]
+	END AS [Outcome_1m]
 	FROM CTE1
 )
 SELECT *
