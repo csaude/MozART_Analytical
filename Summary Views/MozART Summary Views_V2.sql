@@ -5,7 +5,7 @@ DROP VIEW IF EXISTS [dbo].[v_ALT],
 [dbo].[v_CD4Count],
 [dbo].[v_CD4per],
 [dbo].[v_ViralLoad],
-[dbo].[v_Demo],
+[dbo].[v_Summary],
 [dbo].[v_HB],
 [dbo].[v_Height],
 [dbo].[v_PCR],
@@ -16,7 +16,7 @@ DROP VIEW IF EXISTS [dbo].[v_ALT],
 [dbo].[v_LastRegimen_Year];
 Go
 
-CREATE View  v_Demo
+CREATE View  v_Summary
 AS 
 SELECT distinct a.nid as NID, 
 
@@ -269,7 +269,7 @@ SELECT      a.NID,
             b.Enrollment_Age, 
             a.AccessFilePath                                                                
 FROM [t_resultadoslaboratorio] a 
-left join [v_demo] b on a.nid=b.nid and a.AccessFilePath=b.AccessFilePath
+left join [v_Summary] b on a.nid=b.nid and a.AccessFilePath=b.AccessFilePath
 where codexame = 'Carga Viral';
 go
 
@@ -290,7 +290,7 @@ SELECT      a.NID,
             b.Enrollment_Age, 
             a.AccessFilePath                                                                
 FROM [t_resultadoslaboratorio] a 
-left join [v_demo] b on a.nid=b.nid and a.AccessFilePath=b.AccessFilePath
+left join [v_Summary] b on a.nid=b.nid and a.AccessFilePath=b.AccessFilePath
 where codexame = 'CD4' and codparametro = 'ABSOLUTO' ;
 go
 
@@ -310,7 +310,7 @@ SELECT      a.NID,
             b.Enrollment_Age,             
             a.AccessFilePath    
 FROM [t_resultadoslaboratorio]  a
-left join [v_demo] b on a.nid=b.nid and a.AccessFilePath=b.AccessFilePath
+left join [v_Summary] b on a.nid=b.nid and a.AccessFilePath=b.AccessFilePath
 where codexame = 'CD4' and codparametro = 'PERCENTUAL' ;
 go
 
@@ -331,7 +331,7 @@ SELECT      a.NID,
             b.Enrollment_Age,           
             a.AccessFilePath    
 FROM [t_resultadoslaboratorio]  a
-left join [v_demo] b on a.nid=b.nid and a.AccessFilePath=b.AccessFilePath
+left join [v_Summary] b on a.nid=b.nid and a.AccessFilePath=b.AccessFilePath
 where codexame = 'Carga Viral' ;
 go
 
@@ -349,7 +349,7 @@ SELECT      a.NID,
             b.ART_Initiation_Date,             
             a.AccessFilePath    
 FROM [t_observacaopaciente] a 
-left join [v_demo] b on a.nid=b.nid and a.AccessFilePath=b.AccessFilePath
+left join [v_Summary] b on a.nid=b.nid and a.AccessFilePath=b.AccessFilePath
 where codobservacao in ('Peso', 'Peso-Crian�a') ;
 go
 
@@ -364,7 +364,7 @@ SELECT      a.nid,
             b.ART_Initiation_Date,             
             a.AccessFilePath
 FROM [t_observacaopaciente] a
-left join [v_demo] b on a.nid=b.nid and a.AccessFilePath=b.AccessFilePath
+left join [v_Summary] b on a.nid=b.nid and a.AccessFilePath=b.AccessFilePath
 where codobservacao in ('Altura', 'Estatura','ALTURA (CM)','Altura da crianca', 'Altura-Crianca', 'Altura-crianca') ;
 go
 
@@ -384,7 +384,7 @@ SELECT      a.nid,
             b.ART_Initiation_Date,             
             a.AccessFilePath
 FROM [t_resultadoslaboratorio] a 
-left join [v_demo] b on a.nid=b.nid and a.AccessFilePath=b.AccessFilePath
+left join [v_Summary] b on a.nid=b.nid and a.AccessFilePath=b.AccessFilePath
 where codexame in ('HB', 'Hemoglobina', 'Hemoglob�na')  and (codparametro in ('Hemoglobina') or codparametro is null) ;
 go
 
@@ -404,7 +404,7 @@ SELECT      a.NID,
             b.ART_Initiation_Date,             
             a.AccessFilePath
 FROM [t_resultadoslaboratorio] a 
-left join [v_demo] b on a.nid=b.nid and a.AccessFilePath=b.AccessFilePath
+left join [v_Summary] b on a.nid=b.nid and a.AccessFilePath=b.AccessFilePath
 where codexame in ('ALT') and codparametro is null ;
 go
 
@@ -421,7 +421,7 @@ SELECT a.NID,
             b.First_Drug_Pickup_Date,
             b.ART_Initiation_Date           
 FROM [t_resultadoslaboratorio] a
-left join [v_demo] b on a.nid=b.nid and a.AccessFilePath=b.AccessFilePath
+left join [v_Summary] b on a.nid=b.nid and a.AccessFilePath=b.AccessFilePath
 where codexame='PCR' ;
 go
 
@@ -438,7 +438,7 @@ SELECT      a.NID,
             b.ART_Initiation_Date,             
             a.AccessFilePath
 FROM [t_observacaopaciente] a
-left join [v_demo] b on a.nid=b.nid and a.AccessFilePath=b.AccessFilePath
+left join [v_Summary] b on a.nid=b.nid and a.AccessFilePath=b.AccessFilePath
 where codobservacao in ('IMC') ;
 go
 
