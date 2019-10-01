@@ -21,25 +21,25 @@ AS
 SELECT distinct a.nid as NID, 
 
             a.hdd,
-			aa.Provincia as Province,
-			aa.distrito as District,
-			aa.designacao as Health_Facility,
+	    aa.Provincia as Province,
+	    aa.distrito as District,
+	    aa.designacao as Health_Facility,
 
             convert(varchar(10), a.datanasc, 101) AS Birth_Date,
-			a.Current_Age,
+	    a.Current_Age,
             a.sexo AS Sex, 
             convert(varchar(10), a.datadiagnostico, 101) AS Diagnosis_Date,
             year(datadiagnostico) AS Diagnosis_Year,
             a.codproveniencia AS Patient_Origin, 
             convert(varchar(10), a.dataabertura, 101) AS Enrollment_Date,
             year(a.dataabertura) AS Enrollment_Year,
-			a.idade AS Enrollment_Age,
-			a.meses AS Enrollment_Months,
+	    a.idade AS Enrollment_Age,
+	    a.meses AS Enrollment_Months,
             datediff(day, a.datadiagnostico, a.dataabertura) AS Diagnosis_to_Care,
             convert(varchar(10), a.datainiciotarv, 101) AS ART_Initiation_Date,    
             year(datainiciotarv) AS ART_Initiation_Year,
             convert(varchar(10), a.datasaidatarv, 101) AS Exit_Date,
-			a.codestado AS Exit_Status,
+	    a.codestado AS Exit_Status,
 
             b.gravida AS Gravida, 
             b.codestadocivil AS Civil_Status, 
@@ -52,22 +52,22 @@ SELECT distinct a.nid as NID,
             f.codregime AS First_Regimen, 
             f.tipotarv AS First_Drug_Pickup_Type,       
             convert(varchar(10), g.max_datatarv, 101) AS Last_Drug_Pickup_Date,
-			convert(varchar(10), g.dataproxima_l, 101) AS Next_Drug_Pickup_Date, 
-			g.codregime_l AS Last_Regimen,
+	    convert(varchar(10), g.dataproxima_l, 101) AS Next_Drug_Pickup_Date, 
+	    g.codregime_l AS Last_Regimen,
             g.tipotarv_l AS Last_Drug_Pickup_Type,
-			datediff(dd, convert(varchar(10), g.max_datatarv, 101), convert(varchar(10), f.datatarv, 101)) AS Time_on_ART_Days,
+	    datediff(dd, convert(varchar(10), g.max_datatarv, 101), convert(varchar(10), f.datatarv, 101)) AS Time_on_ART_Days,
 			
             convert(varchar(10), h.max_dataseguimento, 101) AS Last_Consultation_Date,
             convert(varchar(10), h.dataproximaconsulta_l, 101) AS Next_Consultation_Date, 
 
-			ii.resultado AS First_Viral_Result,
-			CASE WHEN ii.resultado < 1000 THEN 'SUPPRESSED'
+	    ii.resultado AS First_Viral_Result,
+	    CASE WHEN ii.resultado < 1000 THEN 'SUPPRESSED'
 			WHEN ii.resultado >= 1000 THEN 'NOT SUPPRESSED'
 			ELSE NULL
 			END AS First_Viral_Load,
             convert(varchar(10), ii.dataresultado, 101) AS First_Viral_Load_Date,  
-			i.resultado AS Recent_Viral_Result,
-			CASE WHEN i.resultado < 1000 THEN 'SUPPRESSED'
+	    i.resultado AS Recent_Viral_Result,
+	    CASE WHEN i.resultado < 1000 THEN 'SUPPRESSED'
 			WHEN i.resultado >= 1000 THEN 'NOT SUPPRESSED'
 			ELSE NULL
 			END AS Recent_Viral_Load,
@@ -83,7 +83,7 @@ SELECT distinct a.nid as NID,
             convert(varchar(10), o.min_datainicio, 101) AS GAAC_Creation_Date,    
             m.afinidade AS GAAC_Creation_Reason,
 
-			a.AccessFilePath
+	    a.AccessFilePath
 
 
 FROM 
