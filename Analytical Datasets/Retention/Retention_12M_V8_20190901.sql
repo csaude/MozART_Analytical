@@ -6,7 +6,7 @@
 ---- RetentionType: Variable in months to specify retention range (i.e. 1 for 1m retention, 12 for 12m retention
 ---- Pickup: Maxes on datatarv and dataseguimento before outcome date on filtered subset USING ROWNUMBERS
 ---- Added @CreationDate (date when stored proc is run) to add a 'Not Evaluated' status and outcome for those
----- with evaluation dates beyond current date
+---- with evaluation dates beyond current date, ex. "2020-01-09"
 ---- =========================================================================================================
 
 IF EXISTS (SELECT * FROM sys.all_objects WHERE object_id = OBJECT_ID('[dbo].[RetentionGenerator_12m]') AND type IN ('P', 'PC', 'RF', 'X'))
