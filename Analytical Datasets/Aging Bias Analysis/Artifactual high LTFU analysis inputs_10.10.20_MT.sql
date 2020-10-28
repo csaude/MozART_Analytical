@@ -1,0 +1,425 @@
+---- =========================================================================================================
+---- WORKING SQL QUERY FOR Artifactual LTFU (Aging bias analysis)
+---- AUTHOR: Marcela Torres
+---- DATE: 9/3/2020
+---- After running the TX_CURR query run this code to get counts from the two quarters to be compared 
+---- Comparing FY19Q4 and FY20Q1
+---- =========================================================================================================
+
+---Removing duplicate observations with the same nid----
+---Removed 20,617---
+WITH CTE AS(
+   SELECT *,
+       RN = ROW_NUMBER()OVER(PARTITION BY nid ORDER BY nid)
+   FROM Sandbox.dbo.TX_CURR_FY20Q1
+)
+DELETE FROM CTE WHERE RN > 1
+
+
+---Removing duplicate observations with the same nid----
+---Removed 20,617---
+WITH CTE AS(
+   SELECT *,
+       RN = ROW_NUMBER()OVER(PARTITION BY nid ORDER BY nid)
+   FROM Sandbox.dbo.TX_CURR_FY19Q4
+)
+DELETE FROM CTE WHERE RN > 1
+
+
+---- Data Check Counts----
+--- 1,638,065 -----
+ SELECT count (nid), Outcome_FY20
+ FROM Sandbox.dbo.TX_CURR_FY20Q1
+ GROUP BY Outcome_FY20
+
+ --- 1,638,065 -----
+ SELECT count (nid), Outcome_FY19
+ FROM Sandbox.dbo.TX_CURR_FY19Q4
+ GROUP BY Outcome_FY19
+
+  --- 1,638,065 -----
+ SELECT Sexo, count (nid)
+ FROM Sandbox.dbo.TX_CURR_FY20Q1
+ GROUP BY Sexo
+
+  --- 1,638,065 -----
+ SELECT Sexo, count (nid)
+ FROM Sandbox.dbo.TX_CURR_FY19Q4
+ GROUP BY Sexo
+
+  --- 1,638,065 -----
+ SELECT AgeBand, Outcome_FY19, count (nid)
+ FROM Sandbox.dbo.TX_CURR_FY19Q4
+ GROUP BY AgeBand,Outcome_FY19
+
+--- 1,638,065 -----
+ SELECT AgeBand, Outcome_FY20, count (nid)
+ FROM Sandbox.dbo.TX_CURR_FY20Q1
+ GROUP BY AgeBand,Outcome_FY20
+
+  --- 1,638,065 -----
+ SELECT Sexo, AgeBand, Outcome_FY19, count (nid)
+ FROM Sandbox.dbo.TX_CURR_FY19Q4
+ GROUP BY Sexo, AgeBand,Outcome_FY19
+
+ --- 1,638,065 -----
+ SELECT Sexo, AgeBand, Outcome_FY20, count (nid)
+ FROM Sandbox.dbo.TX_CURR_FY20Q1
+ GROUP BY Sexo, AgeBand,Outcome_FY20
+
+
+ ---- Comparisons between Quarters----
+
+ ---- TX_CURR (Excel column A)----
+ SELECT Sexo, AgeBand,Outcome_FY19, count (nid)
+ FROM Sandbox.dbo.TX_CURR_FY19Q4
+ WHERE Outcome_FY19='Active'
+ GROUP BY Sexo, AgeBand,Outcome_FY19
+ ORDER By Sexo, AgeBand
+
+ SELECT Sexo, AgeBand,Outcome_FY20, count (nid)
+ FROM Sandbox.dbo.TX_CURR_FY20Q1
+ WHERE Outcome_FY20='Active'
+ GROUP BY Sexo, AgeBand,Outcome_FY20
+ ORDER By Sexo, AgeBand
+
+
+
+---- Patients who remained in care in both quarters no age transition (Excel columns B and G)----
+--SELECT t2.nid, t2.Sexo, t2.AgeBand as t2_AgeBand, t1.AgeBand as t1_AgeBand, t2.Outcome_FY20 as t2_Outcome_FY20, t1.Outcome_FY19 as t1_Outcome_FY19
+SELECT t2.Sexo, t2.AgeBand, COUNT(t2.nid)
+FROM Sandbox.dbo.TX_CURR_FY20Q1 t2 left join Sandbox.dbo.TX_CURR_FY19Q4 t1
+ON t2.nid = t1.nid
+WHERE t1.nid is not null and (t2.Outcome_FY20 = 'Active' and t1.Outcome_FY19 = 'Active') and (t2.AgeBand = t1.AgeBand)
+GROUP BY t2.Sexo,t2.AgeBand
+ORDER By t2.Sexo, t2.AgeBand
+
+-- Patients who remained in care and switched agebands between FY19Q4 and FY20Q1 (Excel column C)----
+--SELECT t2.nid, t2.Sexo, t2.AgeBand as t2_AgeBand, t1.AgeBand as t1_AgeBand, t2.Outcome_FY20 as t2_Outcome_FY20, t1.Outcome_FY19 as t1_Outcome_FY19
+SELECT t1.Sexo, t1.AgeBand, COUNT(t1.nid)
+FROM Sandbox.dbo.TX_CURR_FY20Q1 t2 left join Sandbox.dbo.TX_CURR_FY19Q4 t1
+ON t2.nid = t1.nid
+WHERE t1.nid is not null and (t2.Outcome_FY20 = 'Active' and t1.Outcome_FY19 = 'Active') and (t2.AgeBand != t1.AgeBand)
+GROUP BY t1.Sexo,t1.AgeBand
+ORDER By t1.Sexo, t1.AgeBand
+
+-- Patients who remained in care and switched agebands between FY19Q4 and FY20Q1 (Excel column I)----
+--SELECT t2.nid, t2.Sexo, t2.AgeBand as t2_AgeBand, t1.AgeBand as t1_AgeBand, t2.Outcome_FY20 as t2_Outcome_FY20, t1.Outcome_FY19 as t1_Outcome_FY19
+SELECT t2.Sexo, t2.AgeBand, COUNT(t2.nid)
+FROM Sandbox.dbo.TX_CURR_FY20Q1 t2 left join Sandbox.dbo.TX_CURR_FY19Q4 t1
+ON t2.nid = t1.nid
+WHERE (t2.Outcome_FY20 = 'Active' and t1.Outcome_FY19 = 'Active') and (t2.AgeBand != t1.AgeBand)
+GROUP BY t2.Sexo,t2.AgeBand
+ORDER By t2.Sexo, t2.AgeBand
+
+-- Patients who were in care in FY19Q4 and FY20Q1 (not used) ----
+SELECT t2.Sexo, t2.AgeBand, count(t2.nid)
+FROM Sandbox.dbo.TX_CURR_FY20Q1 t2 left join Sandbox.dbo.TX_CURR_FY19Q4 t1
+ON t2.nid = t1.nid
+WHERE t1.nid is not null and (t2.Outcome_FY20 = 'Active' and t1.Outcome_FY19 = 'Active')
+GROUP BY t2.Sexo, t2.AgeBand;
+
+-- Patients who were in care in FY19Q4 but who do not appear in care in FY20Q1 due to death no switch ageband (Excel column D)----
+SELECT t1.Sexo, t1.AgeBand, COUNT(t1.nid)
+---SELECT t2.nid, t2.Sexo, t2.AgeBand as t2_AgeBand, t1.AgeBand as t1_AgeBand, t2.Outcome_FY20 as t2_Outcome_FY20, t1.Outcome_FY19 as t1_Outcome_FY19
+FROM Sandbox.dbo.TX_CURR_FY20Q1 t2 left join Sandbox.dbo.TX_CURR_FY19Q4 t1
+ON t2.nid = t1.nid
+WHERE t1.nid is not null and (t2.Outcome_FY20 = 'Dead' and t1.Outcome_FY19 = 'Active')
+GROUP BY t1.Sexo,t1.AgeBand
+ORDER By t1.Sexo, t1.AgeBand
+
+-- Patients who were in care in FY19Q4 but who do not appear in care in FY20Q1 due to death no switch ageband (Excel column D)----
+SELECT t1.Sexo, t1.AgeBand, COUNT(t1.nid)
+---SELECT t2.nid, t2.Sexo, t2.AgeBand as t2_AgeBand, t1.AgeBand as t1_AgeBand, t2.Outcome_FY20 as t2_Outcome_FY20, t1.Outcome_FY19 as t1_Outcome_FY19
+FROM Sandbox.dbo.TX_CURR_FY20Q1 t2 left join Sandbox.dbo.TX_CURR_FY19Q4 t1
+ON t2.nid = t1.nid
+WHERE t1.nid is not null and (t2.Outcome_FY20 = 'Dead' and t1.Outcome_FY19 = 'Active') and (t2.AgeBand = t1.AgeBand)
+GROUP BY t1.Sexo,t1.AgeBand
+ORDER By t1.Sexo, t1.AgeBand
+
+-- Patients who were in care in FY19Q4 but who do not appear in care in FY20Q1 due to death swithed ageband (Excel column D)----
+SELECT t1.Sexo, t1.AgeBand, COUNT(t1.nid)
+---SELECT t2.nid, t2.Sexo, t2.AgeBand as t2_AgeBand, t1.AgeBand as t1_AgeBand, t2.Outcome_FY20 as t2_Outcome_FY20, t1.Outcome_FY19 as t1_Outcome_FY19
+FROM Sandbox.dbo.TX_CURR_FY20Q1 t2 left join Sandbox.dbo.TX_CURR_FY19Q4 t1
+ON t2.nid = t1.nid
+WHERE t1.nid is not null and (t2.Outcome_FY20 = 'Dead' and t1.Outcome_FY19 = 'Active') and (t2.AgeBand != t1.AgeBand)
+GROUP BY t1.Sexo,t1.AgeBand
+ORDER By t1.Sexo, t1.AgeBand
+
+-- Patients who were in care in FY19Q4 but not in care or dead in FY20Q1 (Excel column E) ----
+SELECT t1.Sexo, t1.AgeBand, count(t1.nid)
+--SELECT t2.nid, t2.Sexo, t2.AgeBand as t2_AgeBand, t1.AgeBand as t1_AgeBand, t2.Outcome_FY20 as t2_Outcome_FY20, t1.Outcome_FY19 as t1_Outcome_FY19
+FROM Sandbox.dbo.TX_CURR_FY20Q1 t2 left join Sandbox.dbo.TX_CURR_FY19Q4 t1
+ON t2.nid = t1.nid
+WHERE t1.nid is not null and ((t2.Outcome_FY20 = 'LTFU' or t2.Outcome_FY20 = 'Abandon'or t2.Outcome_FY20 = 'ART Suspend') and t1.Outcome_FY19 = 'Active')
+GROUP BY t1.Sexo, t1.AgeBand
+ORDER By t1.Sexo, t1.AgeBand
+
+-- Patients who were in care in FY19Q4 but who transferred out FY20Q1 (Excel T) ----
+SELECT t1.Sexo, t1.AgeBand, count(t1.nid)
+--SELECT t2.nid, t2.Sexo, t2.AgeBand as t2_AgeBand, t1.AgeBand as t1_AgeBand, t2.Outcome_FY20 as t2_Outcome_FY20, t1.Outcome_FY19 as t1_Outcome_FY19
+FROM Sandbox.dbo.TX_CURR_FY20Q1 t2 left join Sandbox.dbo.TX_CURR_FY19Q4 t1
+ON t2.nid = t1.nid
+WHERE t1.nid is not null and (t2.Outcome_FY20 = 'Transferred Out' and t1.Outcome_FY19 = 'Active')
+GROUP BY t1.Sexo, t1.AgeBand
+ORDER By t1.Sexo, t1.AgeBand
+
+
+-- Patients in care on t2 but not on t1 (new in care) (Excel column H) ----
+SELECT t2.Sexo, t2.AgeBand, count(t2.nid)
+FROM Sandbox.dbo.TX_CURR_FY19Q4 t1 full join Sandbox.dbo.TX_CURR_FY20Q1 t2
+ON t1.nid = t2.nid
+WHERE (t2.datainiciotarv> '2019-09-21' and t2.Outcome_FY20 = 'Active') and (t1.Outcome_FY19 != 'Active'or t1.Outcome_FY19 is NULL)
+GROUP BY t2.Sexo, t2.AgeBand
+ORDER By t2.Sexo, t2.AgeBand
+
+-- Patients in care on t2 but not on t1 (returned in care) (Excel column J) ----
+SELECT t2.Sexo, t2.AgeBand, count(t2.nid)
+FROM Sandbox.dbo.TX_CURR_FY19Q4 t1 full join Sandbox.dbo.TX_CURR_FY20Q1 t2
+ON t1.nid = t2.nid
+WHERE (t2.datainiciotarv<= '2019-09-21' and t2.Outcome_FY20 = 'Active') and (t1.Outcome_FY19 != 'Active' or t1.Outcome_FY19 is NULL)
+GROUP BY t2.Sexo, t2.AgeBand
+ORDER By t2.Sexo, t2.AgeBand
+
+---- Counts------------------------
+
+---- Counts by province----
+ SELECT Provincia,Outcome_FY19, count (DISTINCT nid)
+ FROM Sandbox.dbo.TX_CURR_FY19Q4
+ WHERE Outcome_FY19='Active'
+ GROUP BY Provincia,Outcome_FY19
+ ORDER By Provincia
+
+ SELECT Provincia,Outcome_FY20, count (DISTINCT nid)
+ FROM Sandbox.dbo.TX_CURR_FY20Q1
+ WHERE Outcome_FY20='Active'
+ GROUP BY Provincia, Outcome_FY20
+ ORDER By Provincia
+
+ ---- Counts by HF----
+ SELECT Provincia, count (DISTINCT designacao)
+ FROM Sandbox.dbo.TX_CURR_FY19Q4
+ GROUP BY Provincia
+ ORDER By Provincia
+
+ SELECT Provincia, count (DISTINCT designacao)
+ FROM Sandbox.dbo.TX_CURR_FY20Q1
+ GROUP BY Provincia
+ ORDER By Provincia
+
+---- =========================================================================================================
+---- WORKING SQL QUERY FOR Artifactual LTFU
+---- AUTHOR: Marcela Torres
+---- DATE: 9/17/2020
+---- After running the TX_CURR query run this code to get counts from the two quarters to be compared
+---- Comparing FY19FYQ1 FY19FYQ2
+---- =========================================================================================================
+
+---Removing duplicate observations with the same nid----
+---Removed 41,410---
+WITH CTE AS(
+   SELECT *,
+       RN = ROW_NUMBER()OVER(PARTITION BY nid ORDER BY nid)
+   FROM Sandbox.dbo.TX_CURR_FY19Q1
+)
+DELETE FROM CTE WHERE RN > 1
+
+
+---Removing duplicate observations with the same nid----
+---Removed 41,410---
+WITH CTE AS(
+   SELECT *,
+       RN = ROW_NUMBER()OVER(PARTITION BY nid ORDER BY nid)
+   FROM Sandbox.dbo.TX_CURR_FY19Q2
+)
+DELETE FROM CTE WHERE RN > 1
+
+
+---- Data Check Counts----
+---  1,756,983  -----
+ SELECT count (nid), Outcome_FY19
+ FROM Sandbox.dbo.TX_CURR_FY19Q1
+ GROUP BY Outcome_FY19
+
+---  1,756,983  -----
+ SELECT count (nid), Outcome_FY19
+ FROM Sandbox.dbo.TX_CURR_FY19Q2
+ GROUP BY Outcome_FY19
+
+  --- 1,756,983 -----
+ SELECT Sexo, count (nid)
+ FROM Sandbox.dbo.TX_CURR_FY19Q1
+ GROUP BY Sexo
+
+  --- 1,756,983 -----
+ SELECT Sexo, count (nid)
+ FROM Sandbox.dbo.TX_CURR_FY19Q2
+ GROUP BY Sexo
+
+ SELECT AgeBand, Outcome_FY19, count (nid)
+ FROM Sandbox.dbo.TX_CURR_FY19Q1
+ GROUP BY AgeBand,Outcome_FY19
+
+
+ SELECT Sexo, AgeBand, Outcome_FY19, count (nid)
+ FROM Sandbox.dbo.TX_CURR_FY19Q1
+ GROUP BY Sexo, AgeBand,Outcome_FY19
+ 
+
+ ---- Comparisons between Quarters----
+
+ ---- TX_CURR (Excel column A)----
+ SELECT Sexo, AgeBand,Outcome_FY19, count (nid)
+ FROM Sandbox.dbo.TX_CURR_FY19Q1
+ WHERE Outcome_FY19='Active'
+ GROUP BY Sexo, AgeBand,Outcome_FY19
+ ORDER By Sexo, AgeBand
+
+ ---- TX_CURR (Excel column F)----
+ SELECT Sexo, AgeBand,Outcome_FY19, count (nid)
+ FROM Sandbox.dbo.TX_CURR_FY19Q2
+ WHERE Outcome_FY19='Active'
+ GROUP BY Sexo, AgeBand,Outcome_FY19
+ ORDER By Sexo, AgeBand
+
+
+---- Patients who remained in care in both quarters no age transition (Excel columns B and G)----
+SELECT t2.Sexo, t2.AgeBand, COUNT(t2.nid)
+FROM Sandbox.dbo.TX_CURR_FY19Q2 t2 left join Sandbox.dbo.TX_CURR_FY19Q1 t1
+ON t2.nid = t1.nid
+WHERE t1.nid is not null and (t2.Outcome_FY19 = 'Active' and t1.Outcome_FY19 = 'Active') and (t2.AgeBand = t1.AgeBand)
+GROUP BY t2.Sexo,t2.AgeBand
+ORDER By t2.Sexo, t2.AgeBand
+
+-- Patients who remained in care and switched agebands between FY19Q1 and FY19Q2 (Excel column C)----
+SELECT t1.Sexo, t1.AgeBand, COUNT(t1.nid)
+FROM Sandbox.dbo.TX_CURR_FY19Q2 t2 left join Sandbox.dbo.TX_CURR_FY19Q1 t1
+ON t2.nid = t1.nid
+WHERE t1.nid is not null and (t2.Outcome_FY19 = 'Active' and t1.Outcome_FY19 = 'Active') and (t2.AgeBand != t1.AgeBand)
+GROUP BY t1.Sexo,t1.AgeBand
+ORDER By t1.Sexo, t1.AgeBand
+
+-- Patients who remained in care and switched agebands between FY19Q1 and FY19Q2 (Excel column I)----
+SELECT t2.Sexo, t2.AgeBand, COUNT(t2.nid)
+FROM Sandbox.dbo.TX_CURR_FY19Q2 t2 left join Sandbox.dbo.TX_CURR_FY19Q1 t1
+ON t2.nid = t1.nid
+WHERE (t2.Outcome_FY19 = 'Active' and t1.Outcome_FY19 = 'Active') and (t2.AgeBand != t1.AgeBand)
+GROUP BY t2.Sexo,t2.AgeBand
+ORDER By t2.Sexo, t2.AgeBand
+
+-- Patients who were in care in FY19Q4 but who do not appear in care in FY20Q1 due to death no switch ageband (Excel column D)----
+SELECT t1.Sexo, t1.AgeBand, COUNT(t1.nid)
+---SELECT t2.nid, t2.Sexo, t2.AgeBand as t2_AgeBand, t1.AgeBand as t1_AgeBand, t2.Outcome_FY20 as t2_Outcome_FY20, t1.Outcome_FY19 as t1_Outcome_FY19
+FROM Sandbox.dbo.TX_CURR_FY19Q2 t2 left join Sandbox.dbo.TX_CURR_FY19Q1 t1
+ON t2.nid = t1.nid
+WHERE t1.nid is not null and (t2.Outcome_FY19 = 'Dead' and t1.Outcome_FY19 = 'Active')
+GROUP BY t1.Sexo,t1.AgeBand
+ORDER By t1.Sexo, t1.AgeBand
+
+-- Patients who were in care in FY19Q4 but who do not appear in care in FY20Q1 due to death no switch ageband (Excel column D)----
+SELECT t1.Sexo, t1.AgeBand, COUNT(t1.nid)
+---SELECT t2.nid, t2.Sexo, t2.AgeBand as t2_AgeBand, t1.AgeBand as t1_AgeBand, t2.Outcome_FY20 as t2_Outcome_FY20, t1.Outcome_FY19 as t1_Outcome_FY19
+FROM Sandbox.dbo.TX_CURR_FY20Q1 t2 left join Sandbox.dbo.TX_CURR_FY19Q4 t1
+ON t2.nid = t1.nid
+WHERE t1.nid is not null and (t2.Outcome_FY20 = 'Dead' and t1.Outcome_FY19 = 'Active') and (t2.AgeBand = t1.AgeBand)
+GROUP BY t1.Sexo,t1.AgeBand
+ORDER By t1.Sexo, t1.AgeBand
+
+-- Patients who were in care in FY19Q4 but who do not appear in care in FY20Q1 due to death swithed ageband (Excel column D)----
+SELECT t1.Sexo, t1.AgeBand, COUNT(t1.nid)
+---SELECT t2.nid, t2.Sexo, t2.AgeBand as t2_AgeBand, t1.AgeBand as t1_AgeBand, t2.Outcome_FY20 as t2_Outcome_FY20, t1.Outcome_FY19 as t1_Outcome_FY19
+FROM Sandbox.dbo.TX_CURR_FY20Q1 t2 left join Sandbox.dbo.TX_CURR_FY19Q4 t1
+ON t2.nid = t1.nid
+WHERE t1.nid is not null and (t2.Outcome_FY20 = 'Dead' and t1.Outcome_FY19 = 'Active') and (t2.AgeBand != t1.AgeBand)
+GROUP BY t1.Sexo,t1.AgeBand
+ORDER By t1.Sexo, t1.AgeBand
+
+-- Patients who were in care in FY19Q4 but not in care or dead in FY20Q1 (Excel column E) ----
+SELECT t1.Sexo, t1.AgeBand, count(t1.nid)
+--SELECT t2.nid, t2.Sexo, t2.AgeBand as t2_AgeBand, t1.AgeBand as t1_AgeBand, t2.Outcome_FY20 as t2_Outcome_FY20, t1.Outcome_FY19 as t1_Outcome_FY19
+FROM Sandbox.dbo.TX_CURR_FY19Q2 t2 left join Sandbox.dbo.TX_CURR_FY19Q1 t1
+ON t2.nid = t1.nid
+WHERE t1.nid is not null and ((t2.Outcome_FY19 = 'LTFU' or t2.Outcome_FY19 = 'Abandon'or t2.Outcome_FY19 = 'ART Suspend') and t1.Outcome_FY19 = 'Active')
+GROUP BY t1.Sexo, t1.AgeBand
+ORDER By t1.Sexo, t1.AgeBand
+
+-- Patients who were in care in FY19Q4 but who transferred out FY20Q1 (Excel column T) ----
+SELECT t1.Sexo, t1.AgeBand, count(t1.nid)
+--SELECT t2.nid, t2.Sexo, t2.AgeBand as t2_AgeBand, t1.AgeBand as t1_AgeBand, t2.Outcome_FY20 as t2_Outcome_FY20, t1.Outcome_FY19 as t1_Outcome_FY19
+FROM Sandbox.dbo.TX_CURR_FY19Q2 t2 left join Sandbox.dbo.TX_CURR_FY19Q1 t1
+ON t2.nid = t1.nid
+WHERE t1.nid is not null and (t2.Outcome_FY19 = 'Transferred Out' and t1.Outcome_FY19 = 'Active')
+GROUP BY t1.Sexo, t1.AgeBand
+ORDER By t1.Sexo, t1.AgeBand
+
+-- Patients in care on t2 but not on t1 (new in care) (Excel column H) ----
+SELECT t2.Sexo, t2.AgeBand, count(t2.nid)
+FROM Sandbox.dbo.TX_CURR_FY19Q1 t1 full join Sandbox.dbo.TX_CURR_FY19Q2 t2
+ON t1.nid = t2.nid
+WHERE (t2.datainiciotarv> '2018-12-21' and t2.Outcome_FY19 = 'Active') and (t1.Outcome_FY19 != 'Active' or t1.Outcome_FY19 is NULL)
+GROUP BY t2.Sexo, t2.AgeBand
+ORDER By t2.Sexo, t2.AgeBand
+
+-- Patients in care on t2 but not on t1 (returned in care) (Excel column J) ----
+SELECT t2.Sexo, t2.AgeBand, count(t2.nid)
+FROM Sandbox.dbo.TX_CURR_FY19Q2 t2 full join Sandbox.dbo.TX_CURR_FY19Q1 t1
+ON t1.nid = t2.nid
+WHERE (t2.datainiciotarv <= '2018-12-21'and t2.Outcome_FY19 = 'Active') and (t1.Outcome_FY19 != 'Active' or t1.Outcome_FY19 is NULL)
+GROUP BY t2.Sexo, t2.AgeBand
+ORDER By t2.Sexo, t2.AgeBand
+
+-- Patients who were in care in FY19Q2 and FY20Q1 (not used, checks only) ----
+SELECT t2.Sexo, t2.AgeBand, count(t2.nid)
+FROM Sandbox.dbo.TX_CURR_FY19Q2 t2 full join Sandbox.dbo.TX_CURR_FY19Q1 t1
+ON t2.nid = t1.nid
+WHERE t2.Outcome_FY19 = 'Active' and t1.Outcome_FY19 = 'Active'
+GROUP BY t2.Sexo, t2.AgeBand;
+
+-- Patients who were in care in FY19Q2 and FY20Q1 (not used, checks only) ----
+SELECT t2.Sexo, t2.AgeBand, count(t2.nid)
+FROM Sandbox.dbo.TX_CURR_FY19Q2 t2 left join Sandbox.dbo.TX_CURR_FY19Q1 t1
+ON t2.nid = t1.nid
+WHERE t2.Outcome_FY19 = 'Active' and (t1.Outcome_FY19 != 'Active' or t1.Outcome_FY19 is NULL)
+GROUP BY t2.Sexo, t2.AgeBand;
+
+
+----================================================
+ SELECT count (DISTINCT nid), Outcome_FY19, Sexo, AgeBand
+ FROM Sandbox.dbo.TX_CURR_FY19Q4
+ WHERE Outcome_FY19='Active' and Sexo is not null and AgeBand is not null
+ GROUP BY Sexo, AgeBand,Outcome_FY19
+
+ SELECT Sexo, AgeBand,Outcome_FY19, count (DISTINCT nid)
+ FROM Sandbox.dbo.TX_CURR_FY19Q4
+ GROUP BY Sexo, AgeBand,Outcome_FY19
+ ORDER By AgeBand
+
+ SELECT Sexo, AgeBand,Outcome_FY20, count (DISTINCT nid)
+ FROM Sandbox.dbo.TX_CURR_FY20Q1
+ GROUP BY Sexo, AgeBand,Outcome_FY20
+ ORDER By AgeBand
+ 
+
+ ---- Counts by province----
+ SELECT Provincia,Outcome_FY19, count (DISTINCT nid)
+ FROM Sandbox.dbo.TX_CURR_FY19Q1
+ WHERE Outcome_FY19='Active'
+ GROUP BY Provincia,Outcome_FY19
+ ORDER By Provincia
+
+ SELECT Provincia,Outcome_FY19, count (DISTINCT nid)
+ FROM Sandbox.dbo.TX_CURR_FY19Q2
+ WHERE Outcome_FY19='Active'
+ GROUP BY Provincia, Outcome_FY19
+ ORDER By Provincia
+
+ ---- Counts by HF----
+ SELECT Provincia, count (DISTINCT designacao)
+ FROM Sandbox.dbo.TX_CURR_FY19Q1
+ GROUP BY Provincia
+ ORDER By Provincia
+
+ SELECT Provincia, count (DISTINCT designacao)
+ FROM Sandbox.dbo.TX_CURR_FY19Q2
+ GROUP BY Provincia
+ ORDER By Provincia
