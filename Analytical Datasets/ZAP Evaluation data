@@ -1,0 +1,148 @@
+---Draft script for MozART data pull for ZAP evaluation 
+--Each to be joined with t_hdd for HDD code, designacao, province
+--From FY 16 and later
+
+---SCRIPT ONE: 
+---Case Study 2: Enhancement of support groups for adherence and retention - to track trends in group creation and termination over time 
+---Table: t_gaac (numGAAC, datainicio, afinidade, dadaDesintegração)
+---8,008 rows
+
+WITH CTE1 AS(
+SELECT gc1.numGAAC, cast(gc1.datainicio as date) AS datainicio, gc1.afinidade, gc1.dataDesintegracao, gc1.AccessFilePath AS gaac_AFP, gc1.hdd AS gaac_hdd,
+	   facility.HdD AS facility_hdd, facility.designacao, facility.Provincia, facility.Distrito, facility.AccessFilePath AS facility_AFP
+	FROM MozART_q1_2020.dbo.t_gaac gc1
+	LEFT JOIN MozART_q1_2020.dbo.t_hdd facility
+	ON gc1.hdd = facility.HdD AND gc1.AccessFilePath = facility.AccessFilePath
+	WHERE facility.Provincia = 'Zambézia'
+		  AND cast(gc1.datainicio as date) >= '2015-10-01'
+) 
+SELECT *
+INTO Sandbox.dbo.ZAP_CS2_gaac
+FROM CTE1
+
+
+---SCRIPT TWO: 
+---Case Study 3: Test and Start (to measure time between HIV diagnosis and treatment initiation)
+---Table: t_paciente (datadiagnostico, datainiciotarv)
+---217,778 rows
+
+WITH cte2 AS (
+SELECT DISTINCT
+	pt1.nid, pt1.sexo, pt1.idade, 
+		cast(pt1.datanasc as date) AS datanasc, 
+		cast(pt1.datadiagnostico as date) AS datadiagnostico, 
+		cast(pt1.datainiciotarv as date) AS datainiciotarv, 
+	facility.designacao, facility.Provincia, facility.Distrito, 
+	pt1.AccessFilePath AS pt_AFP, facility.AccessFilePath AS facility_AFP, pt1.hdd AS pt_hdd, facility.HdD AS facility_hdd
+	FROM MozART_q1_2020.dbo.t_paciente pt1
+	LEFT JOIN MozART_q1_2020.dbo.t_hdd facility
+	ON pt1.hdd = facility.HdD AND pt1.AccessFilePath = facility.AccessFilePath
+	WHERE facility.Provincia = 'Zambézia'
+		  AND cast(pt1.datadiagnostico as date) >= '2015-10-01'
+		  )
+
+SELECT *
+INTO Sandbox.dbo.ZAP_CS3_TandStime
+FROM CTE2
+
+---SCRIPT THREE: 
+---Case Study 4: Models of Differentiated Service Delivery (DSD) Expansion (to measure implementation of DSD) 
+---Table: t_tarv (Dias, TipoTarv, Codmudanca, Dataproxima, Embalagensenviadas, Saldoembalagens)
+---Updated: table of counts of pick-ups by range of # of days (1M, 3M, 6M, Other) by district for each quarter (instead of quarter, by calendar month and year)
+---headers: district, month, year, pickup type (4: 1, 3, 6, Other), count of pick-ups, count of historical patients (distinct nids) 
+
+---step 1 with Marcela: collecting all raw data (all drug pick-ups after Oct 1, 2015 in Zambezia)
+	--- for each pick-up, list date, dias, t_AFP, nid, district, f_AFP
+	---5,319,485 rows (makes sense to have 5mil pick-ups
+WITH CTE5 AS (
+SELECT DISTINCT t.datatarv, t.dias, t.AccessFilePath AS t_AFP, t.nid, f.Distrito, f.AccessFilePath AS f_AFP
+FROM MozART_q1_2020.dbo.t_hdd f
+LEFT JOIN MozART_q1_2020.dbo.t_tarv t
+ON t.AccessFilePath = f.AccessFilePath
+WHERE cast(datatarv as date) >= '2015-10-01'
+	AND f.Provincia = 'Zambézia'
+) 
+SELECT *
+INTO Sandbox.dbo.ZAP_CS4_MTNK
+FROM CTE5
+
+---QCing the MTNK table: patients have the right number of pick-ups in the new table compared to t_tarv 
+SELECT Count(*) FROM Sandbox.dbo.ZAP_CS4_MTNK_Redo
+SELECT Count(*) FROM Sandbox.dbo.ZAP_CS4_MTNK
+
+SELECT DISTINCT datatarv, nid 
+FROM MozART_q1_2020.dbo.t_tarv
+WHERE cast(datatarv as date) >= '2015-10-01'
+	AND nid='01041409010020160000390'
+
+SELECT DISTINCT datatarv, nid
+FROM Sandbox.dbo.ZAP_CS4_MTNK_Redo
+WHERE cast(datatarv as date) >= '2015-10-01'
+	AND nid='01041409010020160000390'
+
+---Marcela QCs, too! 
+SELECT DISTINCT t.datatarv, t.dias, t.AccessFilePath AS t_AFP, t.nid, f.Distrito, f.AccessFilePath AS f_AFP
+FROM  MozART_q1_2020.dbo.t_tarv t
+LEFT JOIN  MozART_q1_2020.dbo.t_hdd f
+ON t.AccessFilePath = f.AccessFilePath
+WHERE cast(datatarv as date) >= '2015-10-01'
+    AND f.Provincia = 'Zambézia' AND nid='03010100107181613257'
+
+
+---step 2 with Marcela: for each drug pick-up, classify as 1M, 3M, 6M or Other under "pickup_type"
+	---5,319,845 rows, so # of obs remains the same 
+WITH CTE6 AS (
+SELECT *,
+	CASE 
+	WHEN dias >= 21  AND dias <= 35  THEN '1M'
+	WHEN dias >= 83  AND dias <= 97  THEN '3M'
+	WHEN dias >= 173 AND dias <= 187 THEN '6M'
+	ELSE 'Other'
+	END AS pickup_type
+FROM Sandbox.dbo.ZAP_CS4_MTNK
+)
+SELECT *
+INTO Sandbox.dbo.ZAP_CS4_MTNK2
+FROM CTE6
+
+---QCing MTNK2
+SELECT Count(*) FROM Sandbox.dbo.ZAP_CS4_MTNK2
+SELECT Count(*) FROM Sandbox.dbo.ZAP_CS4_MTNK
+
+SELECT DISTINCT datatarv, nid, dias
+FROM MozART_q1_2020.dbo.t_tarv
+WHERE cast(datatarv as date) >= '2015-10-01'
+	AND nid='01040201012018004249510'
+
+SELECT DISTINCT datatarv, nid, dias
+FROM Sandbox.dbo.ZAP_CS4_MTNK2
+WHERE cast(datatarv as date) >= '2015-10-01'
+	AND nid='01040201012018004249510'
+
+---step 3 with Marcela: adding COUNTS 
+	---2,975 rows
+WITH CTE8 AS(
+SELECT Distrito, year(datatarv) as c_year, month(datatarv) as c_month, pickup_type, count(distinct datatarv) as pickup_ct
+FROM Sandbox.dbo.ZAP_CS4_MTNK2
+---WHERE Distrito = 'Quelimane' AND year(datatarv) = '2019'
+GROUP BY Distrito, year(datatarv), month(datatarv), pickup_type
+)
+SELECT *
+INTO Sandbox.dbo.ZAP_CS4_counts
+FROM CTE8
+
+---QCing COUNTS table 
+SELECT Distrito, pickup_type, COUNT(datatarv) AS pickup_ct
+FROM Sandbox.dbo.ZAP_CS4_MTNK2
+GROUP BY Distrito, pickup_type
+
+SELECT *
+FROM Sandbox.dbo.ZAP_CS4_counts
+WHERE Distrito = 'Quelimane'
+
+SELECT Distrito, SUM(pickup_ct) AS total_ct
+FROM Sandbox.dbo.ZAP_CS4_counts
+GROUP BY Distrito
+
+---lost 2% of drug pick-ups, across 18 districts - see Excel table 
+
