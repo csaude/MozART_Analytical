@@ -13,10 +13,12 @@ When developing new SQL queries for the production of analytical datasets, there
 		WHEN [first_datatarv] is not null and [datainiciotarv] is null THEN cast([first_datatarv] AS DATE)
 	END AS revised_datainiciotarv
   
-  =============================================================================================================================================================================
-  (2) Nullifying datasaida (exit date) if there's a drug pick-up (datatarv) or consult (dataseguimento) that follows it 
+ =============================================================================================================================================================================
+ 
+ (2) Nullifying datasaida (exit date) if there's a drug pick-up (datatarv) or consult (dataseguimento) that follows it 
   
-  =============================================================================================================================================================================
-  (3) When using lab results, note the following: 
+ =============================================================================================================================================================================
+ 
+ (3) When using lab results, note the following: 
   - there are lab results that are NOT associated with a date (i.e. there's a value for "resultado" but not for "dataresultado") - for that analysis, is a date required? 
   - there are illogical values for certain test results (whether because of differences among IPs in data entry, different lab platforms providing output in different ways ("<200" can't be typed in, so it's entered as "-200"), so restricting to specific test results may be necessary 
