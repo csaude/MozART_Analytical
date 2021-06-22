@@ -1,0 +1,512 @@
+---- =========================================================================================================
+---- CD4 Network Assessment 
+---- AUTHOR: Neha Kamat
+---- REV DATE:May 18, 2021
+---- Site-level patient counts for 4 indicators
+	---1: Estimated number of patients presenting to treatment with CD4 <200 cells/mL
+		----decided to be all of TX_NEW, or all new initiates between Sept 21, 2019 and Sept 20, 2020
+		----limitation: includes silent transfers
+	---2: Estimated number of patients failing treatment for 1 year (i.e. with documented viremia) 
+		----patients who enrolled in ART before Sept 20, 2020 (last date in MozART in Q4 data) 
+		----among them, who had at least 2 VL tests done in the time period between Sept 21, 2017 and Sept 20, 2020			
+		----among them, whose last 2 VL tests have documented results AND are >1,000 
+	---3: Estimated number of patients who were LTFU >1 year and then returned to ART 
+		----identify who was active as of Aug 31, 2019 
+		----among them, who has no documented ART pick-up in the period between Sept 1, 2019 and Sept 1, 2020 
+	---4. Describing CD4 testing coverage
+		----Estimated number of PLHIV with a CD4 test result
+				---Those with a CD4 test done between Sept 21, 2019 and Sept 20, 2020 (based on dataresultado) AND with a documented result (based on resultado)
+				---If they had more than one CD4 test in that 1-year time period, pick the earlier test
+		----Estimated number of PLHIV with CD4 result <200 cells/mL
+				---Among those who had a CD4 test between Sept 21, 2019 and Sept 20, 2020 (i.e. Column L), who had a result <200 cells/mL? 
+
+---- =========================================================================================================
+
+
+---Part 1: Estimated number of patients presenting to treatment with CD4 <200 cells/mL (i.e. all new initiates) 
+
+---first estimate: 186,651
+SELECT COUNT(distinct nid) 
+FROM MozART_q4_2020_Clean.dbo.t_paciente
+WHERE '2019-09-21' <= cast(datainiciotarv as date) 
+		AND cast(datainiciotarv as date) <= '2020-09-20'
+
+---dataset in Sandbox - 186,669 rows...
+WITH CTE0 AS (
+	SELECT  
+		person.nid, person.hdd, 
+		facility.provincia, facility.distrito, facility.designacao,
+		person.AccessFilePath
+	FROM
+	---first pull from t_paciente
+		(SELECT * FROM (
+		SELECT pt.nid, pt.hdd, pt.AccessFilePath, pt.datainiciotarv
+			FROM MozART_q4_2020_Clean.dbo.t_paciente pt
+			WHERE 
+				'2019-09-21' <= cast(datainiciotarv as date) 
+			AND cast(datainiciotarv as date) <= '2020-09-20' 
+			) p2
+			) person
+	---link to t_hdd for geographic information 
+	LEFT JOIN 
+	( SELECT hf.Provincia, hf.HdD, hf.designacao, hf.AccessFilePath, hf.Distrito
+			FROM MozART_q4_2020_Clean.dbo.t_hdd hf) facility
+       ON person.AccessFilePath = facility.AccessFilePath AND person.hdd = facility.HdD 
+	   )
+
+SELECT *
+INTO Sandbox.dbo.CD4netwk_pt1
+FROM CTE0
+
+
+---now to generate counts by HF: 
+
+SELECT provincia, distrito, designacao, hdd, count(distinct nid) AS 'new_pt_ct'
+FROM Sandbox.dbo.CD4netwk_pt1
+GROUP BY provincia, distrito, designacao, hdd
+ORDER BY provincia, distrito, designacao
+---
+
+---- =========================================================================================================
+
+---Part 2: Estimated number of patients failing treatment for 1 year (i.e. with documented viremia) 
+		----patients who enrolled in ART before Sept 20, 2020 (last date in MozART in Q4 data) 
+		----among them, who had at least 2 VL tests done in the time period between Sept 21, 2017 and Sept 20, 2020			
+		----among them, whose last 2 VL tests have documented results AND are >1,000 
+ 
+SELECT DISTINCT
+	   hf.Provincia, hf.distrito, hf.designacao, hf.hdd,
+	   person.datainiciotarv, person.nid,  								 									
+       ss1.dataresultado_1, ss1.resultado_1, ss1.codparametro_1,
+	   ss2.dataresultado_2, ss2.resultado_2, ss2.codparametro_2, 
+	   person.AccessFilePath
+INTO Sandbox.dbo.CD4netwk_pt2
+	   FROM 
+
+---pull last VL test
+	   (SELECT * FROM (
+			SELECT ROW_NUMBER () OVER (PARTITION BY r1.nid, r1.AccessFilePath ORDER BY cast(r1.dataresultado as date) desc) as rownum, 
+				r1.nid, r1.AccessFilePath, r1.dataresultado AS 'dataresultado_1', r1.resultado AS 'resultado_1', r1.codparametro AS 'codparametro_1'
+				FROM 
+					(SELECT r2.nid, r2.AccessFilePath, cast(r2.dataresultado as date) as 'dataresultado', r2.resultado, r2.codparametro
+					FROM MozART_q4_2020_Clean.dbo.t_resultadoslaboratorio r2 
+					WHERE codexame = 'Carga Viral'
+					AND '2017-09-21' <= cast(r2.dataresultado as date) 
+					AND cast(r2.dataresultado as date) <= '2020-09-20' 
+					) r1
+					) ss
+				WHERE ss.rownum = '1') ss1 
+
+---second pull - pulls second to last VL test done between Sept 21, 2017 and Sept 20, 2020
+	LEFT JOIN
+	(SELECT * FROM (
+		SELECT ROW_NUMBER ( ) OVER (PARTITION BY r3.nid, r3.AccessFilePath ORDER BY cast(r3.dataresultado as date) desc) as rownum, 
+			r3.nid, r3.AccessFilePath, r3.dataresultado AS 'dataresultado_2', r3.resultado AS 'resultado_2', r3.codparametro AS 'codparametro_2'
+			FROM 
+				(SELECT r4.nid, r4.AccessFilePath, cast(r4.dataresultado as date) as 'dataresultado', r4.resultado, r4.codparametro
+				FROM MozART_q4_2020_Clean.dbo.t_resultadoslaboratorio r4
+				WHERE codexame = 'Carga Viral'
+				AND  '2017-09-21' <= cast(r4.dataresultado as date) 
+				AND cast(r4.dataresultado as date) <= '2020-09-20' 
+				) r3
+				) st
+			WHERE st.rownum = '2') ss2 
+			ON ss1.AccessFilePath = ss2.AccessFilePath AND ss1.nid = ss2.nid
+
+---join with t_paciente
+	LEFT JOIN 
+	(SELECT hdd, nid, AccessFilePath, cast(datainiciotarv as date) as 'datainiciotarv'
+			FROM MozART_q4_2020_Clean.dbo.t_paciente) person
+			ON person.AccessFilePath = ss1.AccessFilePath AND person.nid = ss1.nid
+
+---join with t_hdd
+	LEFT JOIN
+	(SELECT Provincia, Distrito, designacao, HdD, AccessFilePath
+			FROM [MozART_q4_2020_Clean].dbo.t_hdd) hf 
+			ON person.AccessFilePath = hf.AccessFilePath AND person.hdd = hf.HdD
+
+
+---CTE - best for when manipulating variables, when you need to store data temporarily 
+	  -- instead of saving a prelim table in Sandbox, and then adding a variable (calculated field or something), you'd use CTE 
+
+---once query works, then checks for CD4netwk_pt2: 
+					---   (1) check that the right VL tests are being pulled (nid by nid check) 
+					---	  (2) limit to those who started ART before Sept 20, 2020 (probably a moot restriction) 
+					---	  (3) identify # who had results >1000 for both VL tests 
+
+
+----QCing Sandbox dataset for Part 2
+
+---902,537 rows
+---36,480 that aren't connected to a province
+---35,924 that aren't connected to a nid
+---35,924 that aren't connected to a province AND nid 
+
+--866,534 patients
+--865,798 patients with geographic information and nids
+
+SELECT COUNT(distinct nid) 
+FROM Sandbox.dbo.CD4netwk_pt2
+WHERE provincia is not null and nid is not null 
+
+---nid by nid check - see if right VL results are being pulled
+
+SELECT * 
+FROM MozART_q4_2020_Clean.dbo.t_resultadoslaboratorio
+WHERE nid = '010202100120140003711655'
+	AND codexame = 'Carga Viral'
+ORDER BY cast(dataresultado as date) desc
+
+SELECT *
+FROM Sandbox.dbo.CD4netwk_pt2
+WHERE nid = '010202100120140003711655'
+
+---identify # of pts with 2 VL tests = 554,702
+SELECT COUNT(distinct nid)
+FROM Sandbox.dbo.CD4netwk_pt2
+WHERE nid is not null
+	AND Provincia is not null 
+	AND resultado_1 is not null 
+	AND resultado_2 is not null 
+
+---identifying total # with documented viremia = 68,379
+SELECT COUNT(distinct nid) 
+FROM Sandbox.dbo.CD4netwk_pt2
+WHERE nid is not null
+	AND Provincia is not null 
+	AND resultado_1 is not null 
+	AND resultado_2 is not null 
+	AND resultado_1 >1000
+	AND resultado_2 >1000
+
+---count of patients with documented viremia, by HF 
+SELECT Provincia, distrito, designacao, hdd, COUNT(distinct nid) AS 'pts_doc_viremia'
+FROM Sandbox.dbo.CD4netwk_pt2
+WHERE nid is not null
+	AND Provincia is not null 
+	AND resultado_1 is not null 
+	AND resultado_2 is not null 
+	AND resultado_1 >1000
+	AND resultado_2 >1000
+GROUP BY Provincia, distrito, designacao, hdd
+ORDER BY Provincia, distrito
+
+---- =========================================================================================================
+
+
+---Part 3: Estimated number of patients who were LTFU >1 year  
+		----identify who had their last documented ART pick-up between March 1, 2019 and Aug 31, 2019 (6-month period) 
+		----they should have no documented ART pick-up in the period between Sept 1, 2019 and Sept 1, 2020
+	---2,793,565 rows
+
+SELECT DISTINCT
+	p.nid, p.AccessFilePath, 
+	f.HdD, f.Provincia, f.Distrito, f.designacao,
+	x.maxdatatarv, dataproxima
+
+	INTO Sandbox.dbo.CD4netwk_pt3
+	FROM
+	(SELECT nid, hdd, AccessFilePath
+	FROM t_paciente) p
+
+	LEFT JOIN
+	(SELECT HdD, Provincia, Distrito, designacao, AccessFilePath
+	FROM t_hdd) f
+	ON p.hdd = f.HdD
+
+	---pull their last ART pick-up and call it "maxdatatarv" 
+	LEFT JOIN
+	(SELECT m.nid, m.AccessFilePath, CAST (datatarv as date) AS datatarv, CAST (dataproxima as date) AS dataproxima, CAST (m.maxdatatarv as date) as maxdatatarv 
+		FROM
+		(SELECT nid, AccessFilePath, MAX(CAST (datatarv as date)) as maxdatatarv
+			FROM t_tarv
+				GROUP BY AccessFilePath,nid) m
+				LEFT JOIN t_tarv t 
+				ON m.nid=t.nid AND m.maxdatatarv=t.datatarv AND m.AccessFilePath=t.AccessFilePath) x
+		ON p.nid=x.nid AND p.AccessFilePath=x.AccessFilePath
+
+---how many are just empty patient records with no data tarv? = 706,311
+SELECT COUNT(distinct nid)
+FROM Sandbox.dbo.CD4netwk_pt3
+WHERE maxdatatarv is null 
+
+---Qcing nid by nid 
+SELECT * 
+FROM MozART_q4_2020_Clean.dbo.t_tarv
+WHERE nid = '01000000012016014411447300'
+ORDER BY cast(datatarv as date) desc
+
+SELECT *
+FROM Sandbox.dbo.CD4netwk_pt3
+WHERE nid = '01000000012016014411447300'
+
+
+---how many people have their last ART pick-up between March 1, 2019 and Aug 31, 2019 = 95,876
+SELECT COUNT(distinct nid) 
+FROM Sandbox.dbo.CD4netwk_pt3
+WHERE '2019-03-01' <= maxdatatarv
+ AND maxdatatarv <= '2019-08-31'
+
+ ---counts of those patients whose last ART pick-up was between March 1, 2019 and Aug 31, 2019 by HF
+SELECT Provincia, Distrito, designacao, HdD, count(distinct nid) AS 'LTFU_pt_ct'
+FROM Sandbox.dbo.CD4netwk_pt3
+WHERE '2019-03-01' <= maxdatatarv
+ AND maxdatatarv <= '2019-08-31'
+GROUP BY Provincia, Distrito, designacao, HdD
+ORDER BY Provincia, Distrito 
+
+SELECT Provincia, Distrito, designacao, count(distinct nid) AS 'LTFU_pt_ct'
+FROM Sandbox.dbo.CD4netwk_pt3
+WHERE '2019-03-01' <= maxdatatarv
+ AND maxdatatarv <= '2019-08-31'
+GROUP BY Provincia, Distrito, designacao 
+
+
+SELECT count(distinct nid) AS 'LTFU_pt_ct'
+FROM Sandbox.dbo.CD4netwk_pt3
+WHERE '2019-03-01' <= maxdatatarv
+ AND maxdatatarv <= '2019-08-31'
+AND hdd is not null 
+
+SELECT count(distinct nid) AS 'LTFU_pt_ct'
+FROM Sandbox.dbo.CD4netwk_pt3
+WHERE '2019-03-01' <= maxdatatarv
+ AND maxdatatarv <= '2019-08-31'
+
+
+ ----QCing the counts for HFs with duplicated HDD codes
+
+ ---(A) Mavalane 
+  C:\MozART\CCS\CS Mavalane.mdb
+  C:\MozART\CCS\Hospital de Dia do Mavalane.mdb
+  C:\MozART\CCS\Hospital de Dia do Mavalane - Pediatria.mdb
+	---(1) CS Mavalane - 22,465 (total); 721 (LTFU)
+	---(2) HG Mavalane - 13,628 (total); 151 (LTFU)
+	---(3) HG Mavalane Pediatric - 2,061 (total); 42 (LTFU)
+
+---(B) Nampula - CS Namina and CS Napipine
+C:\MozART\ICAP\cs_namina.mdb
+C:\MozART\ICAP\cs_napipine.mdb
+	---(1) CS Namina - 2,610 (total); 129 (LTFU) 
+	---(2) CS Napipine - 4,158 (total); 168 (LTFU) 
+ 
+ ---(C) Sofala - CS Ceramica and CS Chota
+ C:\MozART\ECHO\CS Cerâmica.mdb
+ C:\MozART\ECHO\CS Chota.mdb
+	---(1) CS Ceramica - 1,549 (total); 137 (LTFU)
+	---(2) CS Chota - 2,600 (total); 164 (LTFU) 
+
+ ---(D) Sofala - CS Chibabava Sede and HR Muxungue
+ C:\MozART\ECHO\CS Chibabava Sede.mdb
+ C:\MozART\ECHO\HR Muxungue.mdb
+	---(1) CS Chibabava Sede - 2,184 (total); 58 (LTFU)
+	---(2) HR Muxungue - 8,230 (total); 297 (LTFU) 
+
+ ---(E) Sofala - CS Igreja Baptista and HR Marromeu
+ C:\MozART\ECHO\CS Igreja Baptista.mdb
+ C:\MozART\ECHO\Marromeu.mdb
+	---(1) CS Igreja Baptista - 1,756 (total); 112 (LTFU)
+	---(2) HR Marromeu - 13,473 (total); 727 (LTFU) 
+
+---(F) Chokwe - CS Conhane and CS Macunene
+C:\MozART\EGPAF\Conhane.mdb
+C:\MozART\EGPAF\Macunene.mdb
+	---(1) CS Conhane - 707 (total); 56 (LTFU)
+	---(2) CS Macunene - 361 (total); 16 (LTFU) 
+
+SELECT COUNT(distinct nid) 
+FROM Sandbox.dbo.CD4netwk_pt3
+WHERE AccessFilePath = 'C:\MozART\EGPAF\Macunene.mdb' 
+	AND '2019-03-01' <= maxdatatarv
+	AND maxdatatarv <= '2019-08-31'
+
+
+---- =========================================================================================================
+
+---Part 4. Describing CD4 testing coverage
+		----Estimated number of PLHIV with a CD4 test result
+				---Those with a CD4 test done between Sept 21, 2019 and Sept 20, 2020 (based on dataresultado) AND with a documented result (based on resultado)
+				---If they had more than one CD4 test in that 1-year time period, pick the earlier test
+		----Estimated number of PLHIV with CD4 result <200 cells/mL
+				---Among those who had a CD4 test between Sept 21, 2019 and Sept 20, 2020 (i.e. Column L), who had a result <200 cells/mL? 
+
+
+---Part (1) of Coverage (Column L) --- 66,183 rows
+
+SELECT DISTINCT
+	   person.nid,
+	   hf.Provincia, hf.distrito, hf.designacao, hf.hdd,								 									
+       ss1.dataresultado_1, ss1.resultado_1, ss1.codparametro_1,
+	   person.AccessFilePath,
+	   CASE
+			WHEN ss1.resultado_1 < 200 THEN 'adv disease'
+			WHEN ss1.resultado_1 >= 200 THEN 'not adv disease'
+	   END AS 'Adv_ds'
+INTO Sandbox.dbo.CD4netwk_pt4_may6
+	   FROM 
+
+---pull first CD4 test in the period between Sept 21, 2019 and Sept 20, 2020
+	   (SELECT * FROM (
+			SELECT ROW_NUMBER () OVER (PARTITION BY r1.nid, r1.AccessFilePath ORDER BY cast(r1.dataresultado as date) asc) as rownum, 
+				r1.nid, r1.AccessFilePath, r1.dataresultado AS 'dataresultado_1', r1.resultado AS 'resultado_1', r1.codparametro AS 'codparametro_1'
+				FROM 
+					(SELECT r2.nid, r2.AccessFilePath, cast(r2.dataresultado as date) as 'dataresultado', r2.resultado, r2.codparametro
+					FROM MozART_q4_2020_Clean.dbo.t_resultadoslaboratorio r2 
+					WHERE codexame = 'CD4'
+					AND '2019-09-21' <= cast(r2.dataresultado as date) 
+					AND cast(r2.dataresultado as date) <= '2020-09-20' 
+					) r1
+					) ss
+				WHERE ss.rownum = '1') ss1 
+
+---join with t_paciente
+	LEFT JOIN 
+	(SELECT hdd, nid, AccessFilePath, cast(datainiciotarv as date) as 'datainiciotarv'
+			FROM MozART_q4_2020_Clean.dbo.t_paciente) person
+			ON person.AccessFilePath = ss1.AccessFilePath AND person.nid = ss1.nid
+
+---join with t_hdd
+	LEFT JOIN
+	(SELECT Provincia, Distrito, designacao, HdD, AccessFilePath
+			FROM [MozART_q4_2020_Clean].dbo.t_hdd) hf 
+			ON person.AccessFilePath = hf.AccessFilePath AND person.hdd = hf.HdD
+
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+---pt4 dataset in Sandbox has 66,183 rows, but 62,091 distinct NIDs (because 4,092 have null nids) 
+SELECT COUNT(distinct nid) 
+FROM Sandbox.dbo.CD4netwk_pt4
+
+SELECT COUNT(*) 
+FROM Sandbox.dbo.CD4netwk_pt4
+
+SELECT COUNT(*)
+FROM Sandbox.dbo.CD4netwk_pt4
+WHERE nid is null 
+
+---nid by nid check to see if the right CD4 is being pulled 
+SELECT * 
+FROM MozART_q4_2020_Clean.dbo.t_resultadoslaboratorio 
+WHERE nid = '01021106012020000372045720225'
+	AND codexame = 'CD4'
+ORDER BY cast(dataresultado as date) asc
+
+SELECT *
+FROM Sandbox.dbo.CD4netwk_pt4
+WHERE nid = '01021106012020000372045720225'
+
+----creating counts by province, district, and then also by HF
+SELECT Provincia, COUNT(distinct nid) AS 'pt_ct'
+FROM Sandbox.dbo.CD4netwk_pt4
+GROUP BY Provincia
+
+SELECT Provincia, distrito, COUNT(distinct nid) AS 'pt_ct'
+FROM Sandbox.dbo.CD4netwk_pt4
+GROUP BY Provincia, distrito
+
+---Column E: # who had a CD4 test within the time period 
+SELECT Provincia, distrito, designacao, hdd, COUNT(distinct nid) AS 'pt_ct'
+FROM Sandbox.dbo.CD4netwk_pt4
+GROUP BY Provincia, distrito, designacao, hdd
+
+---Column F: Of those in column E, who had a result <200 
+SELECT Provincia, distrito, designacao, hdd, COUNT(distinct nid) AS 'pt_ct'
+FROM Sandbox.dbo.CD4netwk_pt4
+WHERE resultado_1 <200
+GROUP BY Provincia, distrito, designacao, hdd
+
+
+---- =========================================================================================================
+
+
+----May 18, 2021
+---There are 17 sites that (1) have no data for any of the MozART outputs and (2) are included in the Q4 reporting, with the correct HDD codes
+---Do they actually have no patients that meet the selection criteria?  
+
+	---1: Estimated number of patients presenting to treatment with CD4 <200 cells/mL
+		----decided to be all of TX_NEW, or all new initiates between Sept 21, 2019 and Sept 20, 2020
+		----limitation: includes silent transfers
+	---2: Estimated number of patients failing treatment for 1 year (i.e. with documented viremia) 
+		----patients who enrolled in ART before Sept 20, 2020 (last date in MozART in Q4 data) 
+		----among them, who had at least 2 VL tests done in the time period between Sept 21, 2017 and Sept 20, 2020			
+		----among them, whose last 2 VL tests have documented results AND are >1,000
+	---Part 3: Estimated number of patients who were LTFU >1 year  
+		----identify who had their last documented ART pick-up between March 1, 2019 and Aug 31, 2019 (6-month period) 
+		----they should have no documented ART pick-up in the period between Sept 1, 2019 and Sept 1, 2020
+	---Part 4: Describing CD4 coverage - two inputs: 
+		---(1) Column L: Estimated number of PLHIV with a CD4 test result
+			---Those with a CD4 test done between Sept 21, 2019 and Sept 20, 2020 (based on dataresultado) AND with a documented result (based on resultado)
+			---If they had more than one CD4 test in that 1-year time period, pick the earlier test
+		---(2) Column N: Estimated number of PLHIV with CD4 result <200 cells/mL
+			---Among those who had a CD4 test between Sept 21, 2019 and Sept 20, 2020 (i.e. Column L), who had a result <200 cells/mL? 
+
+---17 sites: 
+EGP1080900 
+ARL1100402 
+ARL1100510
+ICP1031318
+ECH1010216
+ECH1010606
+ECH1070107
+ECH1050215
+FGH01040906
+FGH01041000
+FGH01041100
+FGH01040707
+FGH01040708
+FGH01041006
+FGH01042006
+FGH01040911
+FGH01042010
+
+
+---Checking part 1: 7/17 sites had data
+SELECT * 
+FROM MozART_q4_2020_Clean.dbo.t_paciente
+WHERE (hdd = 'EGP1080900' OR
+			'ARL1100402' OR
+			'ARL1100510' OR
+			'ICP1031318' OR
+			'ECH1010216' OR
+			'ECH1010606' OR
+			'ECH1070107' OR
+			'ECH1050215' OR
+			'FGH01040906' OR 
+			'FGH01041000' OR
+			'FGH01041100' OR
+			'FGH01040707' OR
+			'FGH01040708' OR
+			'FGH01041006' OR
+			'FGH01042006' OR
+			'FGH01040911' OR
+			'FGH01042010')
+		AND cast(datainiciotarv as date) >= '2019-09-21' 
+		AND cast(datainiciotarv as date) <= '2020-09-20'
+
+SELECT * 
+FROM MozART_q4_2020_Clean.dbo.t_paciente
+WHERE hdd = 'FGH01042010' 
+		AND cast(datainiciotarv as date) >= '2019-09-21' 
+		AND cast(datainiciotarv as date) <= '2020-09-20'
+
+
+SELECT *
+FROM Sandbox.dbo.CD4netwk_pt1
+WHERE hdd = 
+			'ARL1100510' OR
+			'ICP1031318' OR
+			'ECH1010216' OR
+			'ECH1010606' OR
+			'ECH1070107' OR
+			'ECH1050215' OR
+			'FGH01040906' OR 
+			'FGH01041000' OR
+			'FGH01041100' OR
+			'FGH01040707' OR
+			'FGH01040708' OR
+			'FGH01041006' OR
+			'FGH01042006' OR
+			'FGH01040911' OR
+			'FGH01042010'
+
