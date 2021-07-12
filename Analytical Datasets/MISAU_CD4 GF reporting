@@ -1,0 +1,205 @@
+---CD4 request from MISAU 
+---Script produced by Neha Kamat
+---March 2021
+
+---everyone who had their first CD4 test between Sept 21, 2019 and Sept 20,2020
+	---was the first CD4 test within 30 days of HIV diagnosis? (Y/N)
+	---was the first CD4 test within 30 days of ART initiation? (Y/N)
+	---restrict to those that have "Y" for either or both 
+		---their CD4 results (<200, <350, <750)
+			---disagg by sex, age
+				--- under 15, 15+
+				--- 12-35 months, 36-59 months, 5-14 years
+
+WITH CTE0 AS(
+	SELECT DISTINCT
+	   person.nid, person.sexo, person.datanasc, person.datadiagnostico, person.datainiciotarv,					--client characteristics/dates
+       ss1.dataresultado, ss1.resultado,																		--first CD4 test date + result 
+	   person.AccessFilePath,																					--AFP! 
+	   datediff(mm, person.datanasc, ss1.dataresultado) AS 'age_at_CD4',										--age at CD4 test
+	   --within 30 days of starting ART? 
+	    CASE																									
+			WHEN 0 <= datediff(dd, person.datainiciotarv, ss1.dataresultado) AND datediff(dd, person.datainiciotarv, ss1.dataresultado) <= 30 THEN 'Y'
+			ELSE 'N'
+		END AS 'within_30start',
+		--within 30 days of HIV diagnosis? 
+		CASE																									
+			WHEN 0 <= datediff(dd, person.datainiciotarv, ss1.dataresultado) AND datediff(dd, person.datainiciotarv, ss1.dataresultado) <= 30 THEN 'Y'
+			ELSE 'N'
+		END AS 'within_30diag',
+		--within 60 days of starting ART? 
+		CASE																									
+			WHEN 0 <= datediff(dd, person.datainiciotarv, ss1.dataresultado) AND datediff(dd, person.datainiciotarv, ss1.dataresultado) <= 60 THEN 'Y'
+			ELSE 'N'
+		END AS 'within_60start',
+		--within 60 days of HIV diagnosis? 
+		CASE																									
+			WHEN 0 <= datediff(dd, person.datainiciotarv, ss1.dataresultado) AND datediff(dd, person.datainiciotarv, ss1.dataresultado) <= 60 THEN 'Y'
+			ELSE 'N'
+		END AS 'within_60diag',
+		--categorizing CD4 result value 
+		CASE																									
+			WHEN                          ss1.resultado < 0   THEN 'neg'
+			WHEN ss1.resultado >= 0   AND ss1.resultado < 200 THEN 'lt200'
+			WHEN ss1.resultado >= 200 AND ss1.resultado < 350 THEN 'bt200_350'
+			WHEN ss1.resultado >= 350 AND ss1.resultado < 750 THEN 'bt350_750'
+			WHEN ss1.resultado >= 750						  THEN 'gt750'
+		END AS 'cat_resultado'
+
+---pulling from t_resultadoslaboratorio --- pulling first CD4 test that patient ever had
+	   FROM 
+	   (SELECT * FROM (
+			SELECT ROW_NUMBER () OVER (PARTITION BY r1.nid, r1.AccessFilePath ORDER BY cast(r1.dataresultado as date) asc) as rownum, 
+				r1.nid, r1.AccessFilePath, r1.dataresultado, r1.resultado, r1.codparametro, r1.codexame, r1.obs
+				FROM 
+					(SELECT r2.nid, r2.AccessFilePath, cast(r2.dataresultado as date) as 'dataresultado', r2.resultado, r2.codparametro, r2.codexame, r2.obs
+					FROM MozART_q4_2020_Clean.dbo.t_resultadoslaboratorio r2 
+					WHERE codexame = 'CD4'
+					) r1
+					)ss
+				WHERE ss.rownum = '1') ss1 
+
+---linking to t_paciente; pulling nid (for matching), sex, DOB, diagnosis date, age, ART initiation date, AFP (for matching)
+	LEFT JOIN 
+	(SELECT HdD, nid, sexo, cast(datanasc as date) as datanasc, cast(datadiagnostico as date) as datadiagnostico, idade, cast(datainiciotarv as date) as datainiciotarv, AccessFilePath
+			FROM MozART_q4_2020_Clean.dbo.t_paciente) person
+			ON person.AccessFilePath = ss1.AccessFilePath AND person.nid = ss1.nid
+)
+
+SELECT *
+INTO Sandbox.dbo.MISAU_CD4_Jul12
+FROM CTE0
+ORDER BY nid
+
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+---PART 2: restricting to time period of interest -- yields 21,342 rows
+WITH CTE1 AS (
+SELECT *
+FROM Sandbox.dbo.MISAU_CD4_Mar21
+WHERE
+	---limiting to patients who had their first CD4 test in the time period
+	'2019-09-21' <= cast(dataresultado as date) 
+	AND cast(dataresultado as date) <= '2020-09-20' 
+)
+SELECT *
+INTO Sandbox.dbo.MISAU_CD4_Mar21_pt2
+FROM CTE1
+
+
+---checking, nid by nid, to see that it's pulling the patient's FIRST CD4 test
+SELECT *
+  FROM MozART_q4_2020_Clean.dbo.t_resultadoslaboratorio
+  WHERE nid = '01050701012019001292111'
+	AND codexame = 'CD4'
+  ORDER BY cast(dataresultado as date) desc
+
+SELECT *
+  FROM Sandbox.dbo.MISAU_CD4_Mar21
+  WHERE nid = '01050701012019001292111'
+
+SELECT *
+  FROM Sandbox.dbo.MISAU_CD4_Mar21_pt2
+  WHERE nid = '01050701012019001292111'
+
+
+
+--20,517 distinct nids
+SELECT COUNT(distinct nid)
+FROM Sandbox.dbo.MISAU_CD4_Mar21_pt2
+
+---0 null resultado
+---0 null dataresultado
+---373 null datainiciotarv 
+---1 null DOB
+---12,592 within 30 days of diagnosis
+---12,592 within 30 days of ART initiation 
+---13,609 within 60 days of diagnosis
+---13,609 within 60 days of ART initiation 
+SELECT COUNT(distinct nid) 
+FROM Sandbox.dbo.MISAU_CD4_Mar21_pt2
+WHERE within_60start = 'Y' 
+
+
+
+---66,490 CD4 tests done in that year (all have nids) 
+SELECT COUNT(distinct nid) 
+FROM MozART_q4_2020_Clean.dbo.t_resultadoslaboratorio
+WHERE cast(dataresultado as date) >= '2019-09-21' 
+	AND cast(dataresultado as date) <= '2020-09-20'
+	AND codexame = 'CD4'
+	AND nid is not null 
+---go from 66,490 in raw data to 20,517 in MISAU_CD4_pt2
+---becuase the remaining maybe weren't the patient's first CD4 tests 
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+---PART 3 (yields 21,342 rows)
+----add categorical age at CD4 
+				--- under 15, 15+
+				--- 12-35 months, 36-59 months, 5-14 years
+
+WITH CTE2 AS (
+SELECT *
+---INTO Sandbox table
+, 
+CASE 
+	WHEN                    age_at_CD4 is null THEN 'null'
+	WHEN  0   <= age_at_CD4 AND age_at_CD4 <= 11   THEN '0_12mos'
+	WHEN  12  <= age_at_CD4 AND age_at_CD4 <= 35   THEN '12_36mos'
+	WHEN  36  <= age_at_CD4 AND age_at_CD4 <= 59   THEN '36_59mos'
+	WHEN  60  <= age_at_CD4 AND age_at_CD4 <= 179  THEN '5_14yrs'
+	WHEN  180 <= age_at_CD4                        THEN '15yrs_up'
+	END AS 'cat_age_at_CD4'
+	 
+FROM Sandbox.dbo.MISAU_CD4_Mar21_pt2
+)
+SELECT *
+INTO Sandbox.dbo.MISAU_CD4_Mar21_pt3
+FROM CTE2
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+---counts for 30 days within initiation OR 30 days within diagnosis
+SELECT cat_age_at_CD4, cat_resultado, COUNT(distinct nid) AS 'patient_ct'
+FROM Sandbox.dbo.MISAU_CD4_Mar21_pt3
+WHERE (within_30start = 'Y' OR within_30diag = 'Y') 
+GROUP BY cat_age_at_CD4, cat_resultado
+ORDER BY cat_age_at_CD4
+
+
+---counts for 60 days within initiation OR 30 days within diagnosis
+SELECT cat_age_at_CD4, cat_resultado, COUNT(distinct nid) AS 'patient_ct'
+FROM Sandbox.dbo.MISAU_CD4_Mar21_pt3
+WHERE (within_60start = 'Y' OR within_60diag = 'Y') 
+GROUP BY cat_age_at_CD4, cat_resultado
+ORDER BY cat_age_at_CD4
+
+---counts, with no time restriction
+SELECT cat_age_at_CD4, cat_resultado, COUNT(distinct nid) AS 'patient_ct'
+FROM Sandbox.dbo.MISAU_CD4_Mar21_pt3
+GROUP BY cat_age_at_CD4, cat_resultado
+ORDER BY cat_age_at_CD4
+
+---for adults, breakdown by sex
+SELECT cat_resultado, sexo, COUNT(distinct nid) AS 'patient_ct'
+FROM Sandbox.dbo.MISAU_CD4_Mar21_pt3
+WHERE (within_60diag = 'Y' OR within_60start = 'Y')
+	AND cat_age_at_CD4 = '15yrs_up'
+GROUP BY cat_age_at_CD4, cat_resultado, sexo
+
+---for adults, breakdown by sex (no time restriction) 
+SELECT cat_resultado, sexo, COUNT(distinct nid) AS 'patient_ct'
+FROM Sandbox.dbo.MISAU_CD4_Mar21_pt3
+WHERE cat_age_at_CD4 = '15yrs_up'
+GROUP BY cat_age_at_CD4, cat_resultado, sexo
+
+
+---July 12, 2021 - checking the counts for adult males and females, within 30 days
+SELECT cat_resultado, sexo, count(distinct nid) AS 'patient_ct'
+FROM Sandbox.dbo.MISAU_CD4_Jul12
+WHERE
+	---limiting to patients who had their first CD4 test in the time period
+	'2019-09-21' <= cast(dataresultado as date) 
+	AND cast(dataresultado as date) <= '2020-09-20' 
+	AND (within_30diag = 'Y' OR within_30start = 'Y')
+	AND age_at_CD4 >= 180
+GROUP BY cat_resultado, sexo
