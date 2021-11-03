@@ -1,0 +1,279 @@
+---HIV/COVID bulletin data request
+  ---requested by Maria Vilma Chipande
+  ---written by Neha Kamat
+---Investigating differences between before (2019) and during/after (2020) the pandemic and restrictions
+	---monthly indicators: 
+			---(1) # active people on ART (by age band)  
+			---(2) # patients initiated ART 
+			---(3) # ART pick-ups, by MMD type 
+				---1MDD: 0-37 days
+				---3MDD: 38-97 days
+				---6MDD: 98-187 days
+				---Other: >= 188 days
+			---(4) # consults
+			---(5) # VL tests
+			---(6) # VL tests indicating VLS 
+	---time period: Jan 1, 2019 - Sept 20, 2020
+
+---==============================================================================================================================================
+
+---(1) # active people on ART, by age band 
+---during that month, patients either 
+			---had a consult 
+			---had an ART pick-up
+			---have a "next scheduled" consult for after the evaluation date
+			---have a "next scheduled" pick-up for after the evaluation date
+			
+WITH CTE1 AS (
+	SELECT DISTINCT 
+		f.provincia, f.distrito, f.hdd, f.AccessFilePath,
+		p.nid, p.sexo, cast(p.datainiciotarv as date) AS datainiciotarv, cast(p.datanasc as date) AS datanasc, 
+		cast(t.datatarv as date) AS datatarv, cast(t.dataproxima as date) AS dataproxima, 
+		datediff(dd, cast(t.datatarv as date), cast(t.dataproxima as date)) AS 'dias_dispensa',
+		cast(s.dataseguimento as date) AS  dataseguimento, cast(s.dataproximaconsulta as date) AS dataproximaconsulta
+
+	---first pull from t_paciente
+	FROM MozART_q4_2020_Clean.dbo.t_paciente p
+
+	---join with t_hdd
+	LEFT JOIN MozART_q4_2020_Clean.dbo.t_hdd f
+		ON p.AccessFilePath = f.AccessFilePath AND p.hdd = f.hdd
+
+	---pull last ART pick-up (and corresponding next scheduled pick-up) that occurred before that month ended
+	LEFT JOIN 
+	  (SELECT * FROM (
+		SELECT ROW_NUMBER () OVER (PARTITION BY ta.nid, ta.AccessFilePath ORDER BY ta.datatarv desc) as rownum, 
+			ta.nid, ta.AccessFilePath, cast(ta.datatarv as date) AS datatarv_Jan19, cast(ta.dataproxima as date) AS dataproxima_Jan19
+		FROM 
+			(SELECT tb.nid, tb.AccessFilePath, tb.datatarv, tb.dataproxima
+			 FROM MozART_q4_2020_Clean.dbo.t_tarv tb
+			 WHERE cast(tb.datatarv as date) <= '2019-01-31'
+			) ta
+			) tc
+		WHERE tc.rownum = '1') t1
+		ON p.nid = t1.nid AND p.AccessFilePath = t1.AccessFilePath 
+
+---Note: will have to run one query for each month in the time period of interest to not overwhelm system (Jan 2019 - Sept 2020 = 21 months) 
+--indicator since removed from list! 
+
+
+
+---==============================================================================================================================================
+
+---(2) # patients initiated ART 
+
+---developing raw dataset of all patients who initiated in the time period of interest 
+	SELECT DISTINCT 
+		f.provincia, f.distrito, f.hdd, f.AccessFilePath, f.designacao,
+		p.nid, p.sexo, cast(p.datainiciotarv as date) AS datainiciotarv, cast(p.datanasc as date) AS datanasc,
+		month(cast(p.datainiciotarv as date)) AS 'int_month',
+		year(cast(p.datainiciotarv as date)) AS 'int_year',
+		concat((year(cast(p.datainiciotarv as date))), '_', (month(cast(p.datainiciotarv as date)))) AS 'int_year_month'
+
+	
+	INTO Sandbox.dbo.HIV_COVID_ind2
+	FROM MozART_q4_2020_Clean.dbo.t_paciente p
+	
+	LEFT JOIN MozART_q4_2020_Clean.dbo.t_hdd f
+		ON p.AccessFilePath = f.AccessFilePath AND p.hdd = f.hdd
+
+	WHERE cast(p.datainiciotarv as date) >= '2019-01-01' AND
+		  cast(p.datainiciotarv as date) <= '2020-09-20'
+
+---identifying site-level counts of newly initiated patients by month 
+SELECT provincia, distrito, hdd, designacao, AccessFilePath, int_year_month, COUNT(distinct nid) AS 'new_pt_ct'
+INTO Sandbox.dbo.HIV_COVID_ind2_cts
+FROM Sandbox.dbo.HIV_COVID_ind2
+GROUP BY provincia, distrito, hdd, designacao, AccessFilePath, int_year_month
+ORDER BY provincia, distrito, hdd, int_year_month
+
+----QC
+---raw dataset in Sandbox has 339,387 distinct nids
+SELECT COUNT(distinct nid) 
+FROM Sandbox.dbo.HIV_COVID_ind2
+
+---site-level counts somehow adds patients (total 339,446 patients) - 0.017 % increase
+SELECT SUM(new_pt_ct) AS 'total pt ct'
+FROM Sandbox.dbo.HIV_COVID_ind2_cts
+
+
+
+
+---==============================================================================================================================================
+
+---(3) # ART pick-ups, by MMD type 
+		---1MDD: 0-37 days
+		---3MDD: 38-97 days
+		---6MDD: 98-187 days
+		---Other: >= 188 days
+
+		---pulling raw data
+	SELECT DISTINCT 
+		f.provincia, f.distrito, f.hdd, f.AccessFilePath, f.designacao,
+		p.nid, p.sexo, cast(p.datainiciotarv as date) AS datainiciotarv, cast(p.datanasc as date) AS datanasc,
+		cast(t.datatarv as date) AS datatarv, 
+		cast(t.dataproxima as date) AS dataproxima,
+		month(cast(t.datatarv as date)) AS 'pickup_month',
+		year(cast(t.datatarv as date)) AS 'pickup_year',
+		concat((year(cast(t.datatarv as date))), '_', (month(cast(t.datatarv as date)))) AS 'pickup_year_month',
+		CASE
+			WHEN datediff(dd, cast(t.datatarv as date), cast(t.dataproxima as date)) BETWEEN 0  AND 37  THEN '1MDD'
+			WHEN datediff(dd, cast(t.datatarv as date), cast(t.dataproxima as date)) BETWEEN 38 AND 97  THEN '3MDD'
+			WHEN datediff(dd, cast(t.datatarv as date), cast(t.dataproxima as date)) BETWEEN 98 AND 187 THEN '6MDD'
+			WHEN datediff(dd, cast(t.datatarv as date), cast(t.dataproxima as date)) >= 188             THEN 'Other'
+		END AS 'MMDD_type'
+	
+	INTO Sandbox.dbo.HIV_COVID_ind3
+	FROM MozART_q4_2020_Clean.dbo.t_paciente p
+	
+	LEFT JOIN MozART_q4_2020_Clean.dbo.t_hdd f
+		ON p.AccessFilePath = f.AccessFilePath AND p.hdd = f.hdd
+
+	LEFT JOIN MozART_q4_2020_Clean.dbo.t_tarv t
+		ON p.nid = t.nid AND p.AccessFilePath = t.AccessFilePath
+
+	WHERE cast(t.datatarv as date) >= '2019-01-01' AND
+		  cast(t.datatarv as date) <= '2020-09-20'
+	
+
+	---11,641,043 rows
+	
+---creating table of counts by MMDD and by site 	(31,002 rows) 
+	SELECT provincia, distrito, hdd, designacao, AccessFilePath, pickup_year_month, MMDD_type, COUNT(datatarv) AS 'pickup_ct'
+	INTO Sandbox.dbo.HIV_COVID_ind3_cts
+	FROM Sandbox.dbo.HIV_COVID_ind3
+	GROUP BY provincia, distrito, hdd, designacao, AccessFilePath, pickup_year_month, MMDD_type
+	ORDER BY provincia, distrito, hdd, pickup_year_month, MMDD_type
+
+	---QC
+	---t_tarv has 12,703,574 ART pick-ups
+	SELECT COUNT(datatarv) 
+	FROM MozART_q4_2020_Clean.dbo.t_tarv
+	WHERE cast(datatarv as date) >= '2019-01-01' AND 
+	cast(datatarv as date) <= '2020-09-20'
+
+	---counts table has 11,641,043 ART pick-ups --- ie 1,062,531 LESS (8% loss) 
+	SELECT SUM(pickup_ct) 
+	FROM Sandbox.dbo.HIV_COVID_ind3_cts
+
+	SELECT * 
+	FROM Sandbox.dbo.HIV_COVID_ind3_cts
+
+
+
+---==============================================================================================================================================
+
+---(4) # consults
+
+	SELECT DISTINCT 
+		f.provincia, f.distrito, f.hdd, f.AccessFilePath, f.designacao,
+		p.nid, p.sexo, cast(p.datainiciotarv as date) AS datainiciotarv, cast(p.datanasc as date) AS datanasc,
+		cast(s.dataseguimento as date) AS dataseguimento, 
+		cast(s.dataproximaconsulta as date) AS dataproximaconsulta,
+		month(cast(s.dataseguimento as date)) AS 'consult_month',
+		year(cast(s.dataseguimento as date)) AS 'consult_year',
+		concat((year(cast(s.dataseguimento as date))), '_', (month(cast(s.dataseguimento as date)))) AS 'consult_year_month'
+	
+	INTO Sandbox.dbo.HIV_COVID_ind4
+	FROM MozART_q4_2020_Clean.dbo.t_paciente p
+	
+	LEFT JOIN MozART_q4_2020_Clean.dbo.t_hdd f
+		ON p.AccessFilePath = f.AccessFilePath AND p.hdd = f.hdd
+
+	LEFT JOIN MozART_q4_2020_Clean.dbo.t_seguimento s
+		ON p.nid = s.nid AND p.AccessFilePath = s.AccessFilePath
+
+	WHERE cast(s.dataseguimento as date) >= '2019-01-01' AND
+		  cast(s.dataseguimento as date) <= '2020-09-20'
+
+
+	---6,541,184 rows
+	
+---creating table of counts by site 	(10,797 rows) 
+	SELECT provincia, distrito, hdd, designacao, AccessFilePath, consult_year_month, COUNT(dataseguimento) AS 'consult_ct'
+	INTO Sandbox.dbo.HIV_COVID_ind4_cts
+	FROM Sandbox.dbo.HIV_COVID_ind4
+	GROUP BY provincia, distrito, hdd, designacao, AccessFilePath, consult_year_month
+	ORDER BY provincia, distrito, hdd, consult_year_month
+
+
+	---QC
+	---t_seguimento has 7,106,053 consults 
+	SELECT COUNT(dataseguimento) 
+	FROM MozART_q4_2020_Clean.dbo.t_seguimento
+	WHERE cast(dataseguimento as date) >= '2019-01-01' AND 
+	cast(dataseguimento as date) <= '2020-09-20'
+
+	---counts table has 6,541,184 consults --- ie 564,869 LESS (7.9% decrease)
+	SELECT SUM(consult_ct) 
+	FROM Sandbox.dbo.HIV_COVID_ind4_cts
+
+	SELECT * 
+	FROM Sandbox.dbo.HIV_COVID_ind4_cts
+
+---==============================================================================================================================================
+
+---(5) # VL tests
+
+	SELECT DISTINCT 
+		f.provincia, f.distrito, f.hdd, f.AccessFilePath, f.designacao,
+		p.nid, p.sexo, cast(p.datainiciotarv as date) AS datainiciotarv, cast(p.datanasc as date) AS datanasc,
+		cast(l.dataresultado as date) AS dataresultado,
+		l.resultado,
+		month(cast(l.dataresultado as date)) AS 'VL_test_month',
+		year(cast(l.dataresultado as date)) AS 'VL_test_year',
+		concat((year(cast(l.dataresultado as date))), '_', (month(cast(l.dataresultado as date)))) AS 'VL_test_year_month'
+	
+	INTO Sandbox.dbo.HIV_COVID_ind5
+	FROM MozART_q4_2020_Clean.dbo.t_paciente p
+	
+	LEFT JOIN MozART_q4_2020_Clean.dbo.t_hdd f
+		ON p.AccessFilePath = f.AccessFilePath AND p.hdd = f.hdd
+
+	LEFT JOIN MozART_q4_2020_Clean.dbo.t_resultadoslaboratorio l 
+		ON p.nid = l.nid AND p.AccessFilePath = l.AccessFilePath
+
+	WHERE cast(l.dataresultado as date) >= '2019-01-01' AND
+		  cast(l.dataresultado as date) <= '2020-09-20' AND 
+		  codexame = 'Carga Viral'
+
+
+	--1,395,100 rows
+	
+---creating table of counts by site (10,364 rows) 
+	SELECT provincia, distrito, hdd, designacao, AccessFilePath, VL_test_year_month, COUNT(dataresultado) AS 'VL_test_ct'
+	INTO Sandbox.dbo.HIV_COVID_ind5_cts
+	FROM Sandbox.dbo.HIV_COVID_ind5
+	GROUP BY provincia, distrito, hdd, designacao, AccessFilePath, VL_test_year_month
+	ORDER BY provincia, distrito, hdd, VL_test_year_month
+
+
+	---QC
+	---t_resultadoslaboratorio has 1,489,591 VL tests 
+	SELECT COUNT(dataresultado) 
+	FROM MozART_q4_2020_Clean.dbo.t_resultadoslaboratorio
+	WHERE cast(dataresultado as date) >= '2019-01-01' AND 
+		  cast(dataresultado as date) <= '2020-09-20' AND 
+		  codexame = 'Carga Viral'
+
+	---counts table has 1,395,100 VL tests --- ie 94,491 lost (7% loss)  
+	SELECT SUM(VL_test_ct) 
+	FROM Sandbox.dbo.HIV_COVID_ind5_cts
+
+	SELECT * 
+	FROM Sandbox.dbo.HIV_COVID_ind5_cts
+
+
+---==============================================================================================================================================
+
+---(6) # VL tests indicating VLS --- 10,243 rows
+SELECT provincia, distrito, hdd, designacao, AccessFilePath, VL_test_year_month, COUNT(dataresultado) AS 'VLS_test_ct'
+	INTO Sandbox.dbo.HIV_COVID_ind6_cts
+	FROM Sandbox.dbo.HIV_COVID_ind5
+	WHERE resultado < 1000
+	GROUP BY provincia, distrito, hdd, designacao, AccessFilePath, VL_test_year_month
+	ORDER BY provincia, distrito, hdd, VL_test_year_month
+
+SELECT * 
+FROM Sandbox.dbo.HIV_COVID_ind6_cts
+
