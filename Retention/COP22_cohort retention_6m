@@ -1,0 +1,671 @@
+/* 
+	COP22 cohort retention request
+	Requested by Ishani Pathmanathan
+	Coded by Neha Kamat and Carter McCabe
+	December 2021
+*/
+
+
+/* 
+	Assessing 6, 12, and 24 (time permitting, also 3) - month retention across cohorts and within FYs
+	Creating 12-month cohorts based on ART initiation dates
+	Assessing retention status for each patient at those time points 
+	For each patient, 
+		- pull nid, datanasc, sexo, datainiciotarv, datasaidatarv, codestado, hdd 
+		- identify province, age band based on age at evaluation (5-yr groupings)
+	For each patient at each time point, 
+		- pull last ART pick-up prior to evaluation date (and associated next scheduled pick-up date)
+		- pull second-to-last ART pick-up prior to evaluation date (and associated next scheduled pick-up date) 
+		- pull last consult prior to evaluation date (and associated next scheduled consult date)
+	When assessing retention status (retained/not retained or active/not active) 
+		- use 28-day definition for LTFU (missed scheduled pick-up or consult by 28 days or more)
+		
+*/
+
+---6-month retention
+
+SELECT DISTINCT 
+	---pulling t_paciente information 
+	p.nid, cast(p.datanasc as date) AS datanasc, p.sexo, cast(p.datainiciotarv as date) AS datainiciotarv, cast(p.datasaidatarv as date) AS datasaidatarv, p.codestado, p.hdd,
+	---pulling province from t_hdd
+	f1.Provincia, f1.distrito, f1.designacao, 
+	---identifying cohort
+	CASE
+		WHEN cast(p.datainiciotarv as date) >= '2020-03-21' AND cast(p.datainiciotarv as date) <= '2021-03-20' THEN 'FY21'
+		WHEN cast(p.datainiciotarv as date) >= '2019-03-21' AND cast(p.datainiciotarv as date) <= '2020-03-20' THEN 'FY20'
+		WHEN cast(p.datainiciotarv as date) >= '2018-03-21' AND cast(p.datainiciotarv as date) <= '2019-03-20' THEN 'FY19'
+		WHEN cast(p.datainiciotarv as date) >= '2017-03-21' AND cast(p.datainiciotarv as date) <= '2018-03-20' THEN 'FY18'
+		END AS 'FY_cohort',
+	---identifying month of ART initiation 
+	month(cast(p.datainiciotarv as date)) AS initiated_month,
+	---frst EVER ART pick-up for revised ART initiation date
+	fr.first_pickup,
+	---calculating evaluation date 
+	dateadd(mm,  6, cast(p.datainiciotarv as date)) AS eval_date_6m,
+	---last ART pick-up before evaluation date (and associated next scheduled pick-up date)
+	ta.last_pickup_6m,  ta.last_prox_pickup_6m,
+	---last clinical consult date before evaluation date (and associated next scheduled consult date)
+	ts.last_consult_6m, ts.last_prox_consult_6m,
+	---last ever ART pick-up date
+	le.last_ever_pickup,
+	---last ever clinical consult date
+	ds.last_ever_consult
+
+
+	INTO Sandbox.dbo.COP22_cohort_ret_6m_raw
+	
+	FROM t_paciente p
+
+	---joining province from t_hdd
+	LEFT JOIN 
+	(SELECT hdd, Provincia, distrito, designacao
+	 FROM t_hdd) f1
+	 ON p.hdd = f1.hdd 
+
+	---joining first ever ART pick-up (for revised initiation date) 
+		   LEFT JOIN
+       (SELECT * FROM (
+       SELECT ROW_NUMBER() OVER (PARTITION BY ar.nid, ar.hdd ORDER BY ar.datatarv asc) as rownum, 
+			ar.nid, ar.hdd, ar.datatarv as first_pickup
+       FROM
+              (
+              SELECT dr.nid, dr.hdd, cast(dr.datatarv as date) as datatarv
+              FROM t_tarv dr
+              LEFT JOIN
+              (SELECT nid, eval_date_6m = dateadd(mm, 6, cast(datainiciotarv as date)), hdd
+              FROM t_paciente) tpr
+              ON dr.nid = tpr.nid AND dr.hdd = tpr.hdd
+              ) ar
+       ) r
+       WHERE r.rownum = '1') fr
+       ON p.nid = fr.nid AND p.hdd = fr.hdd
+
+	---joining last ART pick-up before 6M eval date (and associated next scheduled pick-up date)
+       LEFT JOIN
+       (SELECT * FROM(
+       SELECT ROW_NUMBER() OVER (PARTITION BY nta.nid, nta.hdd ORDER BY nta.datatarv desc) as rownum, 
+			nta.nid, nta.hdd, nta.eval_date_6m, nta.datatarv as last_pickup_6m, nta.dataproxima as last_prox_pickup_6m
+       FROM
+              (
+              SELECT ta.nid, ta.hdd, cast(ta.datatarv as date) as datatarv, cast(ta.dataproxima as date) as dataproxima, tpa.eval_date_6m
+              FROM t_tarv ta
+              LEFT JOIN
+              (SELECT nid, eval_date_6m = dateadd(mm, 6, cast(datainiciotarv as date)), hdd
+              FROM t_paciente) tpa
+              ON ta.nid = tpa.nid AND ta.hdd = tpa.hdd
+              WHERE datatarv <= eval_date_6m
+              ) nta
+       ) a
+       WHERE a.rownum = '1') ta
+       ON p.nid = ta.nid AND p.hdd = ta.hdd
+
+	---joining last consult before 6M eval date (and associated next scheduled consult date)
+	  LEFT JOIN
+       (SELECT * FROM(
+       SELECT ROW_NUMBER() OVER (PARTITION BY nts.nid, nts.hdd ORDER BY nts.dataseguimento desc) as rownum, 
+			nts.nid, nts.hdd, nts.eval_date_6m, nts.dataseguimento as last_consult_6m, nts.dataproximaconsulta as last_prox_consult_6m
+       FROM
+              (
+              SELECT ts.nid, ts.hdd, cast(ts.dataseguimento as date) as dataseguimento, cast(ts.dataproximaconsulta as date) as dataproximaconsulta, spa.eval_date_6m
+              FROM t_seguimento ts
+              LEFT JOIN
+              (SELECT nid, eval_date_6m = dateadd(mm, 6, cast(datainiciotarv as date)), hdd
+              FROM t_paciente) spa
+              ON ts.nid = spa.nid AND ts.hdd = spa.hdd
+              WHERE dataseguimento <= eval_date_6m
+              ) nts
+       ) s
+       WHERE s.rownum = '1') ts
+       ON p.nid = ts.nid AND p.hdd = ts.hdd
+
+	---joining LAST ever ART pick-up date
+		   LEFT JOIN
+       (SELECT * FROM (
+       SELECT ROW_NUMBER() OVER (PARTITION BY ae.nid, ae.hdd ORDER BY ae.datatarv desc) as rownum, 
+			ae.nid, ae.hdd, ae.datatarv as last_ever_pickup
+       FROM
+              (
+              SELECT de.nid, de.hdd, cast(de.datatarv as date) as datatarv
+              FROM t_tarv de
+              LEFT JOIN
+              (SELECT nid, eval_date_6m = dateadd(mm, 6, cast(datainiciotarv as date)), hdd
+              FROM t_paciente) tpe
+              ON de.nid = tpe.nid AND de.hdd = tpe.hdd
+              ) ae
+       ) e
+       WHERE e.rownum = '1') le
+       ON p.nid = le.nid AND p.hdd = le.hdd
+
+	---joining LAST ever clinical consult date 
+	LEFT JOIN
+       (SELECT * FROM(
+       SELECT ROW_NUMBER() OVER (PARTITION BY sts.nid, sts.hdd ORDER BY sts.dataseguimento desc) as rownum, 
+			sts.nid, sts.hdd, sts.eval_date_6m, sts.dataseguimento as last_ever_consult 
+       FROM
+              (
+              SELECT ds.nid, ds.hdd, cast(ds.dataseguimento as date) as dataseguimento, spt.eval_date_6m
+              FROM t_seguimento ds
+              LEFT JOIN
+              (SELECT nid, eval_date_6m = dateadd(mm, 6, cast(datainiciotarv as date)), hdd
+              FROM t_paciente) spt
+              ON ds.nid = spt.nid AND ds.hdd = spt.hdd
+              ) sts
+       ) t
+       WHERE t.rownum = '1') ds
+       ON p.nid = ds.nid AND p.hdd = ds.hdd
+
+	---specifying which ART initiation period 
+   	WHERE '2017-03-21' <= cast(p.datainiciotarv as date) AND
+     				      cast(p.datainiciotarv as date) <= '2021-03-20' 
+	
+
+	-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/*QUALITY CHECKS*/
+---raw dataset has 1,033,790 rows
+
+----(1) assessing total counts
+	---(a) number of NIDs in national database from patients who initated ART in the 6M time period of interest (people who initiated ART between '2017-03-21' AND '2021-03-21')
+			---1,035,141
+		SELECT COUNT(nid) AS 'not unique_ct'
+		FROM t_paciente
+		WHERE '2017-03-21' <= cast(datainiciotarv as date) AND
+     					      cast(datainiciotarv as date) <= '2021-03-20'
+	---(b) number of unique NIDs in national database from patients who initiated ART in the 6M time period of interest
+			---991,050
+		SELECT COUNT(distinct nid) AS 'unique_ct'
+		FROM t_paciente
+		WHERE '2017-03-21' <= cast(datainiciotarv as date) AND
+     				          cast(datainiciotarv as date) <= '2021-03-20'
+	---(c) number of unique NIDs within a given HDD code (i.e. within a HF) in national database from patients who initiated ART in the 6M time period of interest 
+			---1,033,772
+		SELECT COUNT(*) AS 'actual'
+		FROM (SELECT DISTINCT nid, hdd 
+			  FROM t_paciente
+			  WHERE '2017-03-21' <= cast(datainiciotarv as date) AND
+     								cast(datainiciotarv as date) <= '2021-03-20')
+		AS internalQuery
+
+	---(d) number of unique NIDs/DOB  within a given HDD code (i.e. within a HF) in national database from patients who initiated ART in the 6M time period of interest 
+			---1,033,772
+		SELECT COUNT(*) AS 'actual_withDOB'
+		FROM (SELECT DISTINCT nid, hdd, datanasc
+			  FROM t_paciente
+			  WHERE '2017-03-21' <= cast(datainiciotarv as date) AND
+     								cast(datainiciotarv as date) <= '2021-03-20')
+		AS internalQuery
+
+	---(e) number of rows in raw dataset (1/26 = 1,033,790 rows)
+		SELECT COUNT(nid) AS 'not unique_ct'
+		FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
+
+	---(f) number of unique nids in raw dataset
+		SELECT COUNT(distinct nid) AS 'not unique_ct'
+		FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
+
+	---(g) number of distinct combinations of NID and HDD = 1,033,784
+	SELECT COUNT(*) AS 'nid_hdd_dup_ct' 
+	FROM (SELECT DISTINCT nid, hdd
+		  FROM Sandbox.dbo.COP22_cohort_ret_6m_raw)
+		AS internalQuery
+
+	---(h) number of distinct combinations of NID, HDD, and DOB = 1,033,801
+	SELECT COUNT(*) AS 'nid_hdd_dup_ct' 
+	FROM (SELECT DISTINCT nid, hdd, datanasc
+		  FROM Sandbox.dbo.COP22_cohort_ret_6m_raw)
+		AS internalQuery
+
+	---(h) cohort year counts compared to t_paciente 
+	SELECT FY_cohort, count(nid) AS 'nid_ct'
+	FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
+	GROUP BY FY_cohort
+
+	SELECT count(nid) AS 'nid_ct_fy21'
+	FROM t_paciente
+	WHERE '2020-03-21' <= cast(datainiciotarv as date) 
+		AND cast(datainiciotarv as date) <= '2021-03-20'
+
+	SELECT count(nid) AS 'nid_ct_fy20'
+	FROM t_paciente
+	WHERE '2019-03-21' <= cast(datainiciotarv as date) 
+		AND cast(datainiciotarv as date) <= '2020-03-20'
+
+	SELECT count(nid) AS 'nid_ct_fy19'
+	FROM t_paciente
+	WHERE '2018-03-21' <= cast(datainiciotarv as date) 
+		AND cast(datainiciotarv as date) <= '2019-03-20'
+
+	SELECT count(nid) AS 'nid_ct_fy18'
+	FROM t_paciente
+	WHERE '2017-03-21' <= cast(datainiciotarv as date) 
+		AND cast(datainiciotarv as date) <= '2018-03-20'
+
+
+/*Null or missing information in raw dataset fields*/
+
+----sexo --- should be zero null - correct! 
+SELECT count(nid) 
+FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
+WHERE sexo is null 
+
+---datainiciotarv, FY_cohort - should be zero null
+SELECT count(nid) 
+FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
+WHERE datainiciotarv is null 
+
+SELECT count(nid) AS nid_ct
+FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
+WHERE FY_cohort is null 
+
+SELECT *
+FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
+WHERE FY_cohort is null 
+
+SELECT count(nid) AS nid_ct -- should be zero 
+FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
+WHERE initiated_month is null  
+
+---geography -- should all be zero! 
+SELECT count(nid) 
+FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
+WHERE hdd is null 
+
+SELECT count(nid) 
+FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
+WHERE provincia is null
+
+SELECT count(nid) -- 8,537 null...  all from 7 sites that have no district information in t_hdd; so kept 
+FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
+WHERE distrito is null 
+
+SELECT count(nid) 
+FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
+WHERE designacao is null 
+
+
+
+---consideration: How many patients in the sample don't have a recorded next scheduled pick-up date for their last ART pick-up before the evaluation date? 
+	--- 976 patients (0.09% of the sample) don't have next scheduled pick-up dates based on their last ART pick-up date before the evaluation date 
+	---decision: not necessary to pull second to last ART pick-up to assign a "next scheduled pick-up date" based on previous MMDD logic 
+	SELECT count(nid)
+	FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
+	WHERE last_pickup_6m is not null 
+		AND last_prox_pickup_6m is null 
+
+----(2) checking the t_paciente fields
+	---raw: datanasc, sexo, datainiciotarv, datasaidatarv, codestado, hdd
+	---calculated/reconfigured: FY_cohort, initiated_month, eval_date_6m 
+			---FY_cohort is based on ART initiation dates (6m cohort dates) 
+					---FY21: Mar 21, 2020 - Mar 20, 2021
+					---FY20: Mar 21, 2019 - Mar 20, 2020
+					---FY19: Mar 21, 2018 - Mar 20, 2019
+					---FY18: Mar 21, 2017 - Mar 20, 2018
+SELECT nid, datanasc, sexo, datainiciotarv, datasaidatarv, codestado, hdd
+FROM t_paciente
+WHERE nid = '0100091201/2019/00018'
+
+SELECT nid, datanasc, sexo, datainiciotarv, datasaidatarv, codestado, FY_cohort, initiated_month, eval_date_6m, hdd
+FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
+WHERE nid = '0100091201/2019/00018'
+
+----(3) checking the ART pick-up dates pulled --- first_pickup, last_pickup_6m, last_prox_pickup_6m, last_ever_pickup
+SELECT nid, datatarv, dataproxima 
+FROM t_tarv
+WHERE nid = '0100110701/2017/00531'
+ORDER BY cast(datatarv as date) desc
+
+SELECT nid, datainiciotarv, eval_date_6m, first_pickup, last_pickup_6m, last_prox_pickup_6m, last_ever_pickup
+FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
+WHERE nid = '0100110701/2017/00531'
+
+----(4) checking the consult dates pulled 
+SELECT nid, dataseguimento, dataproximaconsulta  
+FROM t_seguimento
+WHERE nid = '0100110701/2018/00467'
+ORDER BY cast(dataseguimento as date) desc
+
+SELECT  nid, eval_date_6m, last_consult_6m, last_prox_consult_6m, last_ever_consult
+FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
+WHERE nid = '0100110701/2018/00467'
+
+----(5) checking obs with null fields --- 941 obs have no next pick-up date AND no next consult date; 941/808,185 = 0.116% - determined to not be significant 
+SELECT count(nid)
+	FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
+	WHERE last_prox_pickup_6m is null
+		ANd last_pickup_6m is not null  
+
+----(6) checking for # of duplicate nids in raw dataset - 34,068 nids appear > once, ranging from 2 to 5 times in the raw dataset --- 4% of distinct NID and HDD combinations in the dataset 
+SELECT nid, count(nid) AS 'num_times'
+FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
+GROUP BY nid
+HAVING COUNT(nid)>1
+ORDER BY num_times desc
+
+---identifying the NIDs that appear 5x in the raw dataset 
+SELECT nid, count(nid) AS 'num_times'
+FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
+WHERE COUNT(nid) = 5
+GROUP BY nid
+ORDER BY num_times desc
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+/*ADDING RETENTION STATUS (and age at evaluation date, revised province) TO THE RAW DATASET*/ ---1,033,802 rows affected
+
+SELECT DISTINCT 
+	rw.nid, rw.datanasc, rw.sexo, rw.datainiciotarv, rw.datasaidatarv, rw.codestado, rw.hdd, rw.Provincia, rw.distrito, rw.designacao,
+	rw.FY_cohort, rw.initiated_month, 
+	rw.eval_date_6m,
+	rw.first_pickup,
+	rw.last_pickup_6m, rw.last_prox_pickup_6m, 
+	rw.last_consult_6m, rw.last_prox_consult_6m,
+	rw.last_ever_pickup, 
+	rw.last_ever_consult,
+	CASE 
+		WHEN datanasc > eval_date_6m THEN 'Illogical'
+		WHEN (0  <= datediff(year, datanasc, eval_date_6m) AND datediff(year, datanasc, eval_date_6m) <= 4)  THEN '0-4'
+		WHEN (5  <= datediff(year, datanasc, eval_date_6m) AND datediff(year, datanasc, eval_date_6m) <= 9)  THEN '5-9'
+		WHEN (10 <= datediff(year, datanasc, eval_date_6m) AND datediff(year, datanasc, eval_date_6m) <= 14) THEN '10-14'
+		WHEN (15 <= datediff(year, datanasc, eval_date_6m) AND datediff(year, datanasc, eval_date_6m) <= 19) THEN '15-19'
+		WHEN (20 <= datediff(year, datanasc, eval_date_6m) AND datediff(year, datanasc, eval_date_6m) <= 24) THEN '20-24'
+		WHEN (25 <= datediff(year, datanasc, eval_date_6m) AND datediff(year, datanasc, eval_date_6m) <= 29) THEN '25-29'
+		WHEN (30 <= datediff(year, datanasc, eval_date_6m) AND datediff(year, datanasc, eval_date_6m) <= 34) THEN '30-34'
+		WHEN (35 <= datediff(year, datanasc, eval_date_6m) AND datediff(year, datanasc, eval_date_6m) <= 39) THEN '35-39'
+		WHEN (40 <= datediff(year, datanasc, eval_date_6m) AND datediff(year, datanasc, eval_date_6m) <= 44) THEN '40-45'
+		WHEN (45 <= datediff(year, datanasc, eval_date_6m) AND datediff(year, datanasc, eval_date_6m) <= 49) THEN '45-49'
+		WHEN (50 <= datediff(year, datanasc, eval_date_6m)                                                 ) THEN '50+'
+		END AS 'age_at_eval_6m',
+	---cleaning "provincia" field 
+CASE WHEN Provincia = 'Zambézia' THEN 'Zambezia'
+	 WHEN Provincia = 'Cidade de Maputo' THEN 'Maputo Cidade' 
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'CS Alto Mae' THEN 'Maputo Cidade'
+     WHEN Provincia = 'Maputo' AND designacao LIKE 'CS Malhangalene' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'Hospital de Dia do José Macamo' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'Centro de Saude Jose Macamo' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'CS Xipamanine' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'CS Chamanculo' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'CS 1 de Maio' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'Centro Saude Polana Canico' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'CS 1 de Junho' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'CS ALBASINE' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'CS Romao' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'CS Hulene' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'CS Inhagoia' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'CS Magoanine' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'CS Incassane' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo Provincia' THEN 'Maputo'
+	ELSE  Provincia
+END AS 'provincia_rev',
+	CASE 
+		WHEN (
+        ---scenario 1 (left-most box in flowchart)
+           (  (first_pickup < eval_date_6m) AND 
+              (datasaidatarv IS NULL) AND 
+             ((dateadd(dd,-28,eval_date_6m) <= MAX(last_prox_pickup_6m)) OR
+              (dateadd(dd,-28,eval_date_6m) <= MAX(last_prox_consult_6m)))
+		   ) OR
+       ---scenario 2 (middle box in flowchart)
+	       (  (first_pickup < eval_date_6m) AND 
+              (datasaidatarv IS NOT NULL) AND 
+			  (eval_date_6m < datasaidatarv) AND
+             ((dateadd(dd,-28,eval_date_6m) <= MAX(last_prox_pickup_6m)) OR
+              (dateadd(dd,-28,eval_date_6m) <= MAX(last_prox_consult_6m)))
+           ) OR
+		---scenario 3 (last box on flowchart)
+           (   (first_pickup < eval_date_6m) AND 
+			  ((datasaidatarv IS NOT NULL) AND (eval_date_6m <= datasaidatarv)) AND
+			  ((datasaidatarv < last_pickup_6m) OR (datasaidatarv < last_consult_6m)) AND
+              ((dateadd(dd,-28,eval_date_6m) <= MAX(last_prox_pickup_6m)) OR
+               (dateadd(dd,-28,eval_date_6m) <= MAX(last_prox_consult_6m)))
+           )
+	   ) THEN 'Retained'
+         ELSE 'Not Retained'
+    END AS 'retention_status_6m'
+
+INTO Sandbox.dbo.COP22_cohort_ret_6m_ret
+
+FROM Sandbox.dbo.COP22_cohort_ret_6m_raw rw
+GROUP BY rw.nid, rw.datanasc, rw.sexo, rw.datainiciotarv, rw.datasaidatarv, rw.codestado, rw.hdd, rw.Provincia, rw.distrito, rw.designacao,
+	rw.FY_cohort, rw.initiated_month, 
+	rw.eval_date_6m,
+	rw.first_pickup,
+	rw.last_pickup_6m, rw.last_prox_pickup_6m, 
+	rw.last_consult_6m, rw.last_prox_consult_6m,
+	rw.last_ever_pickup, 
+	rw.last_ever_consult
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------	
+/*Ret dataset quality checks*/ --- dataset produced with 1,033,790 rows 
+
+---revised province
+SELECT provincia_rev, COUNT(nid) -- there are 11 provinces and patients from each :) 
+FROM Sandbox.dbo.COP22_cohort_ret_6m_ret 
+GROUP BY provincia_rev
+
+SELECT provincia, COUNT(nid) ---confirm that there are only changes in patient counts from MC, MP, Zambezia
+FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
+GROUP BY provincia  
+
+---datanasc, age_at_eval_6m 
+SELECT age_at_eval_6m, COUNT(nid) --- the 21 null (no datanasc), and 129 illogical 
+FROM Sandbox.dbo.COP22_cohort_ret_6m_ret 
+GROUP BY age_at_eval_6m
+
+	select count(nid) from Sandbox.dbo.COP22_cohort_ret_6m_raw where datanasc is null 
+	select count(nid) from Sandbox.dbo.COP22_cohort_ret_6m_ret where datanasc > eval_date_6m
+
+---manually checking retention status 
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------	
+
+----ADDING OUTCOME TO DATASET WITH RETENTION STATUS -- 1,033,790 rows
+
+SELECT DISTINCT 
+	rt.nid, rt.datanasc, rt.sexo, rt.datainiciotarv, rt.datasaidatarv, rt.codestado, rt.hdd, rt.provincia_rev, rt.distrito, rt.designacao,
+	rt.FY_cohort, rt.initiated_month, 
+	rt.eval_date_6m,
+	rt.first_pickup,
+	rt.last_pickup_6m, rt.last_prox_pickup_6m, 
+	rt.last_consult_6m, rt.last_prox_consult_6m,
+	rt.last_ever_pickup, 
+	rt.last_ever_consult,
+	rt.age_at_eval_6m,
+	rt.retention_status_6m,
+		CASE
+		---Retained
+		WHEN retention_status_6m = 'Retained' THEN 'Retained'
+		---LTFU With a valid exit date
+		WHEN (  retention_status_6m = 'Not Retained' AND 
+			    datasaidatarv is not NULL AND 
+			   (last_ever_pickup <= datasaidatarv OR last_ever_consult <= datasaidatarv) AND 
+			    codestado = 'Abandono' 
+			 )
+			 THEN 'LTFU'
+		---Transferred Out With a valid exit date
+		WHEN (  retention_status_6m = 'Not Retained' AND 
+			    datasaidatarv is not NULL AND 
+			   (last_ever_pickup <= datasaidatarv OR last_ever_consult <= datasaidatarv) AND 
+			    codestado = 'Transferido Para' 
+			 )
+			 THEN 'Transferred Out'
+		---Suspended ART With a valid exit date
+		WHEN (  retention_status_6m = 'Not Retained' AND 
+			    datasaidatarv is not NULL AND 
+			   (last_ever_pickup <= datasaidatarv OR last_ever_consult <= datasaidatarv) AND 
+			    codestado = 'Suspender Tratamento' 
+			 )
+			 THEN 'Suspended ART'
+		---Dead With a valid exit date
+		WHEN (  retention_status_6m = 'Not Retained' AND 
+			    datasaidatarv is not NULL AND 
+			   (last_ever_pickup <= datasaidatarv OR last_ever_consult <= datasaidatarv) AND 
+			    codestado = 'Obito' 
+			 )
+			 THEN 'Dead'
+		---LTFU With a valid exit date (and null codestado)
+		WHEN (  retention_status_6m = 'Not Retained' AND 
+			    datasaidatarv is not NULL AND 
+			   (last_ever_pickup <= datasaidatarv OR last_ever_consult <= datasaidatarv) AND 
+			    codestado is NULL 
+			 )
+			 THEN 'LTFU'
+		---LTFU with an illogical exit date
+		WHEN (  retention_status_6m = 'Not Retained' AND 
+			   (last_ever_pickup > datasaidatarv OR last_ever_consult > datasaidatarv) 
+			 )
+			 THEN 'LTFU'
+		ELSE 'LTFU'
+		END AS 'outcome_6m',
+	CONCAT(datanasc, '_', hdd, '_', nid) AS 'unique_id'
+	
+
+INTO Sandbox.dbo.COP22_cohort_ret_6m_outcome
+
+FROM Sandbox.dbo.COP22_cohort_ret_6m_ret rt
+GROUP BY 	
+	rt.nid, rt.datanasc, rt.sexo, rt.datainiciotarv, rt.datasaidatarv, rt.codestado, rt.hdd, rt.provincia_rev, rt.distrito, rt.designacao,
+	rt.FY_cohort, rt.initiated_month, 
+	rt.eval_date_6m,
+	rt.first_pickup,
+	rt.last_pickup_6m, rt.last_prox_pickup_6m, 
+	rt.last_consult_6m, rt.last_prox_consult_6m,
+	rt.last_ever_pickup, 
+	rt.last_ever_consult,
+	rt.age_at_eval_6m,
+	rt.retention_status_6m
+
+	-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------	
+/*QUALITY CHECKS ON RETENTION STATUS AND OUTCOME - aggregate */
+
+---total counts in each dataset - should all equal 1,033,790
+SELECT COUNT(*) AS 'raw_ct'
+FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
+
+SELECT COUNT(*) AS 'ret_ct'
+FROM Sandbox.dbo.COP22_cohort_ret_6m_ret
+
+SELECT COUNT(*) AS 'outcome_ct'
+FROM Sandbox.dbo.COP22_cohort_ret_6m_outcome 
+
+---# patients retained in the "ret" and "outcome" datasets - should be equal (669,913)
+SELECT COUNT(*) AS 'ret_retained'
+FROM Sandbox.dbo.COP22_cohort_ret_6m_ret
+WHERE retention_status_6m = 'Retained'
+
+SELECT COUNT(*) AS 'outcome_retained' 
+FROM Sandbox.dbo.COP22_cohort_ret_6m_outcome
+WHERE outcome_6m = 'Retained'
+
+---# patients not retained in the "ret" and "outcome" datasets - should be equal (363,877)
+SELECT COUNT(*) AS 'ret_notret'
+FROM Sandbox.dbo.COP22_cohort_ret_6m_ret
+WHERE retention_status_6m = 'Not Retained'
+
+SELECT COUNT(*) AS 'outcome_notret'
+FROM Sandbox.dbo.COP22_cohort_ret_6m_outcome
+WHERE outcome_6m = 'LTFU' OR outcome_6m = 'Dead' OR outcome_6m = 'Transferred Out'
+
+---count of distinct NIDs = 991,050 (4% loss of patients from cohort)
+SELECT COUNT(distinct nid) 
+FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
+
+SELECT COUNT(distinct nid) 
+FROM Sandbox.dbo.COP22_cohort_ret_6m_ret
+
+SELECT COUNT(distinct nid) 
+FROM Sandbox.dbo.COP22_cohort_ret_6m_outcome
+
+---count of distinct NIDs and HDDs in each dataset = 1,033,772 (loss of 18 patients)
+SELECT COUNT(*) AS 'nid_ct' 
+FROM (SELECT DISTINCT nid, hdd
+      FROM Sandbox.dbo.COP22_cohort_ret_6m_raw)
+		AS internalQuery
+
+SELECT COUNT(*) AS 'nid_ct' 
+FROM (SELECT DISTINCT nid, hdd
+      FROM Sandbox.dbo.COP22_cohort_ret_6m_ret)
+		AS internalQuery
+
+SELECT COUNT(*) AS 'nid_ct' 
+FROM (SELECT DISTINCT nid, hdd
+      FROM Sandbox.dbo.COP22_cohort_ret_6m_outcome)
+		AS internalQuery
+
+---count of distinct NIDs, HDDs, and datanasc in each dataset = 1,033,789 (loss of 1 patient) 
+SELECT COUNT(*) AS 'nid_ct' 
+FROM (SELECT DISTINCT nid, hdd, datanasc
+      FROM Sandbox.dbo.COP22_cohort_ret_6m_raw)
+		AS internalQuery
+
+SELECT COUNT(*) AS 'nid_ct' 
+FROM (SELECT DISTINCT nid, hdd, datanasc
+      FROM Sandbox.dbo.COP22_cohort_ret_6m_ret)
+		AS internalQuery
+
+SELECT COUNT(*) AS 'nid_ct' 
+FROM (SELECT DISTINCT nid, hdd, datanasc
+      FROM Sandbox.dbo.COP22_cohort_ret_6m_outcome)
+		AS internalQuery
+
+---creating a unique identifier to allow for proper counting of unique patients --added to outcome dataset
+SELECT TOP 100
+datanasc, hdd, nid, CONCAT(datanasc, '_', hdd, '_', nid) AS 'unique_id'
+FROM Sandbox.dbo.COP22_cohort_ret_6m_outcome
+
+----------------------------------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------	
+
+/* general tables */
+SELECT FY_cohort, initiated_month, provincia_rev, sexo, age_at_eval_6m, retention_status_6m, outcome_6m, count(distinct unique_id) AS 'patient_count'
+FROM Sandbox.dbo.COP22_cohort_ret_6m_outcome
+GROUP BY FY_cohort, initiated_month, provincia_rev, sexo, age_at_eval_6m, retention_status_6m, outcome_6m
+ORDER BY FY_cohort, initiated_month, provincia_rev, sexo, age_at_eval_6m
+
+
+
+
+/*
+
+Items to update (when revising 6-month query for 12- and 24-month): 
+----Code for “raw” dataset
+-	Inclusion criteria for cohort (last WHERE statement) 
+-	CASE WHEN ranges when creating the variable FY_cohort 
+-	The number of months added to the initiation date for eval_date_Xm 
+-	Change variable names for the dates of last pick-up (and associated next scheduled pick-up) and consult (and associated next scheduled consult) before the evaluation date
+-	Name of table in Sandbox 
+-	Evaluation date calculation (and variable name)
+o	First ever ART pick-up*
+o	Last ART pick-up before evaluation date
+o	Last consult before evaluation date
+o	Last ever consult*
+o	Last ever ART pick-up*
+o	* = the code doesn’t actually require the eval date calculation or join, so the code is clunky here, but it works
+-	QCing the “raw” dataset
+o	The start and date end ranges when QCing patient counts 
+o	Change database name to Sandbox.dbo.COP22_cohort_ret_Xm_raw
+o	FY_cohort comment for QCing purposes 
+o	Variable names 
+----Code for “ret” dataset
+-	Variable names in first SELECT statement 
+-	Eval_date_6m should be changed in the CASE WHEN statements for age_at_eval_Xm
+-	Variable names in CASE WHEN for retention_status
+-	Retention_status_Xm 
+-	Name of table dropped in Sandbox (INTO)
+-	Name of “raw” dataset in FROM 
+-	Variable names in GROUP BY lines 
+-	QCing the “ret” dataset
+o	The Sandbox table names
+o	Variable names 
+----Code for “outcome” dataset
+-	Variable names in first SELECT statement 
+-	Variables in CASE WHEN for outcome
+-	Outcome_Xm
+-	Name of table dropped in Sandbox (INTO)
+-	Name of “ret” dataset in FROM 
+-	Variable names in GROUP BY lines
+-	QCing “outcome dataset
+o	The Sandbox table names 
+o	Variable names 
+
+	 
+*/
