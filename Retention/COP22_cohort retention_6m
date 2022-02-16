@@ -615,11 +615,77 @@ FROM Sandbox.dbo.COP22_cohort_ret_6m_outcome
 
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------	
 
-/* general tables */
-SELECT FY_cohort, initiated_month, provincia_rev, sexo, age_at_eval_6m, retention_status_6m, outcome_6m, count(distinct unique_id) AS 'patient_count'
+/*creating aggregate tables*/ 
+
+
+---create tables of aggregate counts by province, FY, initiation month, age, sex, ret_status, outcome
+
+---6m retention - aggregate counts 
+SELECT FY_cohort, initiated_month, 
+	CASE 
+		WHEN initiated_month = '1' THEN '7'
+		WHEN initiated_month = '2' THEN '8'
+		WHEN initiated_month = '3' THEN '9'
+		WHEN initiated_month = '4' THEN '10'
+		WHEN initiated_month = '5' THEN '11'
+		WHEN initiated_month = '6' THEN '12'
+		WHEN initiated_month = '7' THEN '1'
+		WHEN initiated_month = '8' THEN '2'
+		WHEN initiated_month = '9' THEN '3'
+		WHEN initiated_month = '10' THEN '4'
+		WHEN initiated_month = '11' THEN '5'
+		WHEN initiated_month = '12' THEN '6'
+	END AS 'eval_month',
+	   provincia_rev, sexo, 
+	   age_at_eval_6m AS 'age_at_eval', 
+	   retention_status_6m AS 'retention_status', 
+	   outcome_6m AS 'outcome', 
+	   '6M' AS 'retention_pd',
+	   count(distinct unique_id) AS 'patient_count_6m'
+INTO Sandbox.dbo.COP22_cohort_ret_6m_totals
 FROM Sandbox.dbo.COP22_cohort_ret_6m_outcome
 GROUP BY FY_cohort, initiated_month, provincia_rev, sexo, age_at_eval_6m, retention_status_6m, outcome_6m
-ORDER BY FY_cohort, initiated_month, provincia_rev, sexo, age_at_eval_6m
+ORDER BY FY_cohort, initiated_month, provincia_rev, sexo, age_at_eval_6m, retention_status_6m, outcome_6m
+
+
+---12m retention - aggregate counts
+SELECT FY_cohort, initiated_month AS 'eval_month', provincia_rev, sexo, 
+	   age_at_eval_12m AS 'age_at_eval', 
+	   retention_status_12m AS 'retention_status', 
+	   outcome_12m AS 'outcome', 
+	   '12M' AS 'retention_pd',
+	   count(distinct unique_id) AS 'patient_count_12m'
+INTO Sandbox.dbo.COP22_cohort_ret_12m_totals
+FROM Sandbox.dbo.COP22_cohort_ret_12m_outcome
+GROUP BY FY_cohort, initiated_month, provincia_rev, sexo, age_at_eval_12m, retention_status_12m, outcome_12m
+ORDER BY FY_cohort, initiated_month, provincia_rev, sexo, age_at_eval_12m, retention_status_12m, outcome_12m
+
+
+---24m retention - aggregate counts 
+SELECT FY_cohort, initiated_month AS 'eval_month', provincia_rev, sexo, 
+	   age_at_eval_24m AS 'age_at_eval', 
+	   retention_status_24m AS 'retention_status', 
+	   outcome_24m AS 'outcome',
+	   '24M' AS 'retention_pd',
+	   count(distinct unique_id) AS 'patient_count_24m'
+INTO Sandbox.dbo.COP22_cohort_ret_24m_totals
+FROM Sandbox.dbo.COP22_cohort_ret_24m_outcome
+GROUP BY FY_cohort, initiated_month, provincia_rev, sexo, age_at_eval_24m, retention_status_24m, outcome_24m
+ORDER BY FY_cohort, initiated_month, provincia_rev, sexo, age_at_eval_24m, retention_status_24m, outcome_24m
+
+
+---combining aggregate counts from all 3 retention periods 
+SELECT m6.retention_pd, m6.provincia_rev, m6.FY_cohort, m6.eval_month, m6.sexo, m6.age_at_eval, m6.retention_status, m6.outcome, m6.patient_count_6m AS 'patient_ct'
+	INTO Sandbox.dbo.COP22_cohort_ret_6_12_24_aggregate
+	FROM Sandbox.dbo.COP22_cohort_ret_6m_totals m6
+UNION
+SELECT m12.retention_pd, m12.provincia_rev, m12.FY_cohort, m12.eval_month, m12.sexo, m12.age_at_eval, m12.retention_status, m12.outcome, m12.patient_count_12m AS 'patient_ct'
+	FROM Sandbox.dbo.COP22_cohort_ret_12m_totals m12
+UNION
+SELECT m24.retention_pd, m24.provincia_rev, m24.FY_cohort, m24.eval_month, m24.sexo, m24.age_at_eval, m24.retention_status, m24.outcome, m24.patient_count_24m AS 'patient_ct'
+	FROM Sandbox.dbo.COP22_cohort_ret_24m_totals m24
+
+
 
 
 
