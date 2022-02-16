@@ -370,7 +370,7 @@ SELECT DISTINCT
 		WHEN (25 <= datediff(year, datanasc, eval_date_6m) AND datediff(year, datanasc, eval_date_6m) <= 29) THEN '25-29'
 		WHEN (30 <= datediff(year, datanasc, eval_date_6m) AND datediff(year, datanasc, eval_date_6m) <= 34) THEN '30-34'
 		WHEN (35 <= datediff(year, datanasc, eval_date_6m) AND datediff(year, datanasc, eval_date_6m) <= 39) THEN '35-39'
-		WHEN (40 <= datediff(year, datanasc, eval_date_6m) AND datediff(year, datanasc, eval_date_6m) <= 44) THEN '40-45'
+		WHEN (40 <= datediff(year, datanasc, eval_date_6m) AND datediff(year, datanasc, eval_date_6m) <= 44) THEN '40-44'
 		WHEN (45 <= datediff(year, datanasc, eval_date_6m) AND datediff(year, datanasc, eval_date_6m) <= 49) THEN '45-49'
 		WHEN (50 <= datediff(year, datanasc, eval_date_6m)                                                 ) THEN '50+'
 		END AS 'age_at_eval_6m',
@@ -623,49 +623,3 @@ ORDER BY FY_cohort, initiated_month, provincia_rev, sexo, age_at_eval_6m
 
 
 
-
-/*
-
-Items to update (when revising 6-month query for 12- and 24-month): 
-----Code for “raw” dataset
--	Inclusion criteria for cohort (last WHERE statement) 
--	CASE WHEN ranges when creating the variable FY_cohort 
--	The number of months added to the initiation date for eval_date_Xm 
--	Change variable names for the dates of last pick-up (and associated next scheduled pick-up) and consult (and associated next scheduled consult) before the evaluation date
--	Name of table in Sandbox 
--	Evaluation date calculation (and variable name)
-o	First ever ART pick-up*
-o	Last ART pick-up before evaluation date
-o	Last consult before evaluation date
-o	Last ever consult*
-o	Last ever ART pick-up*
-o	* = the code doesn’t actually require the eval date calculation or join, so the code is clunky here, but it works
--	QCing the “raw” dataset
-o	The start and date end ranges when QCing patient counts 
-o	Change database name to Sandbox.dbo.COP22_cohort_ret_Xm_raw
-o	FY_cohort comment for QCing purposes 
-o	Variable names 
-----Code for “ret” dataset
--	Variable names in first SELECT statement 
--	Eval_date_6m should be changed in the CASE WHEN statements for age_at_eval_Xm
--	Variable names in CASE WHEN for retention_status
--	Retention_status_Xm 
--	Name of table dropped in Sandbox (INTO)
--	Name of “raw” dataset in FROM 
--	Variable names in GROUP BY lines 
--	QCing the “ret” dataset
-o	The Sandbox table names
-o	Variable names 
-----Code for “outcome” dataset
--	Variable names in first SELECT statement 
--	Variables in CASE WHEN for outcome
--	Outcome_Xm
--	Name of table dropped in Sandbox (INTO)
--	Name of “ret” dataset in FROM 
--	Variable names in GROUP BY lines
--	QCing “outcome dataset
-o	The Sandbox table names 
-o	Variable names 
-
-	 
-*/
