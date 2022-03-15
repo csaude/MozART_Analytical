@@ -1,0 +1,130 @@
+/*
+March 10, 2022
+UNAIDS late HIV diagnosis reporting 
+MISAU request from Orrin Tiberi
+
+Approach: 
+- pull everyone who had their FIRST CD4 test between Sept 21, 2020 and Sept 20, 2021
+- that test should be either (1) within 30 days of ART initiation OR (2) within 30 days of HIV diagnosis 
+- disaggregate patinets by 
+	- sex
+	- age 
+		- 0-11 months
+		- 12-35 months
+		- 36-59 months
+		- 5-14 years
+		- 15+ years
+	- CD4 test result
+		- <200 cells/mm3
+		- 200-350 cells/mm3
+		- 351-750 cells/mm3
+		- 750+ cells/mm3
+
+*/
+
+WITH CTE0 AS (
+	SELECT DISTINCT 
+		---t_paciente information 
+		p2.nid, p2.sexo, p2.datanasc, p2.datadiagnostico, p2.datainiciotarv,
+		---CD4 test result information 
+		r2.dataresultado, r2.resultado, 
+		p2.hdd,
+		---first CD4 test within 30 days of ART initiation?
+		CASE
+			WHEN 0 <= datediff(dd, p2.datainiciotarv, r2.dataresultado) AND datediff(dd, p2.datainiciotarv, r2.dataresultado) <= 30 THEN 'Y' 
+			ELSE 'N'
+		END AS 'within_30_start', 
+		---first CD4 test within 30 days of HIV diagnosis? 
+		CASE
+			WHEN 0 <= datediff(dd, p2.datadiagnostico, r2.dataresultado) AND datediff(dd, p2.datadiagnostico, r2.dataresultado) <= 30 THEN 'Y'
+			ELSE 'N'
+		END AS 'within_30_diag',
+		---age at first CD4 test, categorized
+		CASE 
+			WHEN datediff(mm, p2.datanasc, r2.dataresultado) > 0   AND datediff(mm, p2.datanasc, r2.dataresultado) < 12  THEN '0-11m'
+			WHEN datediff(mm, p2.datanasc, r2.dataresultado) >= 12 AND datediff(mm, p2.datanasc, r2.dataresultado) < 36  THEN '12-35m'
+			WHEN datediff(mm, p2.datanasc, r2.dataresultado) >= 36 AND datediff(mm, p2.datanasc, r2.dataresultado) < 60  THEN '36-59m'
+			WHEN datediff(mm, p2.datanasc, r2.dataresultado) >= 60 AND datediff(mm, p2.datanasc, r2.dataresultado) < 168 THEN '5-14y'
+			WHEN datediff(mm, p2.datanasc, r2.dataresultado) >= 168													     THEN '15py'
+		END AS 'age_at_CD4',
+		---first CD4 test result, categorized
+		CASE
+			WHEN r2.resultado < 200 THEN 'lt200'
+			WHEN r2.resultado >= 200 AND r2.resultado < 351 THEN 'bt200_350'
+			WHEN r2.resultado >= 351 AND r2.resultado < 750 THEN 'bt351_750'
+			WHEN r2.resultado >= 750 THEN 'gtet_750'
+		END AS 'CD4_result_cat'
+	
+	FROM
+
+		(SELECT * FROM (
+			SELECT ROW_NUMBER () OVER (PARTITION BY r1.nid, r1.hdd ORDER BY cast(r1.dataresultado as date) asc) as rownum, 
+			r1.nid, r1.hdd, r1.dataresultado, r1.resultado, r1.codexame
+			FROM 
+				(SELECT r2.nid, r2.hdd, cast(r2.dataresultado as date) AS 'dataresultado', r2.resultado, r2.codexame
+				 FROM t_resultadoslaboratorio r2
+				 WHERE codexame = 'CD4'
+				 ) r1
+				 ) ss
+			WHERE ss.rownum = '1') r2
+
+	--- linking to t_paciente
+	LEFT JOIN 
+	
+		(SELECT p1.hdd, p1.nid, cast(p1.datanasc as date) AS 'datanasc', cast(p1.datadiagnostico as date) AS 'datadiagnostico', 
+			cast(p1.datainiciotarv as date) AS 'datainiciotarv', p1.sexo
+		 FROM t_paciente p1) p2
+		 ON p2.hdd = r2.hdd AND p2.nid = r2.nid
+
+	WHERE r2.dataresultado >= '2020-09-21' AND r2.dataresultado <= '2021-09-20'
+
+	)
+
+	SELECT *
+	INTO Sandbox.dbo.MISAU_CD4_Mar10
+	FROM CTE0
+
+
+----------------------------------------------------------------------------------
+---QCing 
+
+
+---in that time period, 33,936 CD4 tests were done
+SELECT COUNT(dataresultado) AS 'test_ct'
+FROM t_resultadoslaboratorio
+WHERE codexame = 'CD4'
+	AND cast(dataresultado as date) >= '2020-09-21'
+	AND cast(dataresultado as date) <= '2021-09-20'
+
+	---but 32,972 CD4 tests with unique nid/date/result (to see how many were duplicates) -- thus 48% were FIRST CD4 tests
+SELECT COUNT(*)
+	FROM (SELECT DISTINCT nid, dataresultado, resultado, codexame
+		  FROM t_resultadoslaboratorio
+		  WHERE codexame = 'CD4'
+				AND cast(dataresultado as date) >= '2020-09-21'
+				AND cast(dataresultado as date) <= '2021-09-20'
+		  ) AS internalQuery
+
+---the query has 15,772 rows, indicating that 46% of them were a client's first CD4 test
+
+
+---confirm that the query is pulling the client's FIRST CD4 test
+SELECT nid, dataresultado, resultado
+FROM t_resultadoslaboratorio 
+WHERE codexame = 'CD4' 
+	AND nid = '0102020901/2021/00366'
+
+SELECT nid, dataresultado, resultado
+FROM Sandbox.dbo.MISAU_CD4_Mar10
+WHERE nid = '0102020901/2021/00366'
+
+--11,752 patients had their first CD4 test in the year-long period that was within 30 days of either ART initiation OR diagnosis 
+SELECT count(distinct nid) AS 'pt_ct'
+FROM Sandbox.dbo.MISAU_CD4_Mar10
+WHERE (within_30_start = 'Y' OR within_30_diag = 'Y') 
+
+-----creating counts by age, sex, categorical CD4 test result among those whose first CD4 test was within 30 days of either ART initiation or HIV diagnosis
+SELECT age_at_CD4, sexo, CD4_result_cat, count(distinct nid) AS 'pt_ct' 
+FROM Sandbox.dbo.MISAU_CD4_Mar10
+WHERE (within_30_start = 'Y' OR within_30_diag = 'Y') 
+GROUP BY age_at_CD4, sexo, CD4_result_cat
