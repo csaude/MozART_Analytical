@@ -1,0 +1,355 @@
+/*
+	COP22 request: change in TX_CURR definition 
+	Requested by Lindsay Templin
+	Coded by Neha Kamat
+	January 2022
+*/
+
+/* 
+Assessing the change in TX_CURR when we use BOTH ART pick-ups AND consults vs. ONLY ART pick-ups
+- for the last 4 quarters (FY21: q1, q2, q3, q4), assess the entire MozART patient population 
+	- q1: Sept 21, 2020 - Dec 20, 2020
+	- q2: Dec 21, 2020 - March 20, 2021
+	- q3: March 21, 2021 - June 20, 2021
+	- q4: June 21, 2021 - Sept 20, 2021  
+
+- each patient should be determined to either be 'Active' or 'Not Active' based on the two definitions
+	- curr_ART_consult
+	- curr_ART_nocon
+- for each patient, also pull their sex, geography information, and age 
+	- calculate MMDD: 
+		1MDD: <83 days
+		3MDD: 83-173 days
+		6MDD: >173 days
+
+*/
+
+------q1 - update for q2-q4 
+
+SELECT DISTINCT 
+	---pulling t_paciente information 
+	p.nid, cast(p.datanasc as date) AS datanasc, p.sexo, cast(p.datainiciotarv as date) AS datainiciotarv, cast(p.datasaidatarv as date) AS datasaidatarv, p.codestado, p.hdd,
+	---pulling province and designacao from t_hdd
+	f1.Provincia, f1.designacao,
+	---frst EVER ART pick-up for revised ART initiation date
+	fr.first_pickup,
+	---last ART pick-up before evaluation date (and associated next scheduled pick-up date)
+	ta.last_pickup_q1,  ta.last_prox_pickup_q1,
+	---last clinical consult date before evaluation date (and associated next scheduled consult date)
+	ts.last_consult_q1, ts.last_prox_consult_q1,
+	---last ever ART pick-up date (last_ever_pickup)
+	le.last_ever_pickup,
+	---last ever clinical consult date (last_ever_consult) 
+	ds.last_ever_consult,
+	---MMDD based on last pick-up before evaluation date
+	CASE 
+		WHEN       datediff(dd, last_pickup_q1, last_prox_pickup_q1) < 83   THEN '1MDD'
+		WHEN       datediff(dd, last_pickup_q1, last_prox_pickup_q1) >= 83 
+			   AND datediff(dd, last_pickup_q1, last_prox_pickup_q1) <= 173 THEN '3MDD'
+		WHEN       datediff(dd, last_pickup_q1, last_prox_pickup_q1) > 173  THEN '6MDD'
+	END AS 'MMDD_q1',
+	---coarse age (<15/15+) based on age at evaluation date 
+	CASE 
+		WHEN datediff(yy, datanasc, '2021-09-20') < 15  THEN '<15'
+		WHEN datediff(yy, datanasc, '2021-09-20') >= 15 THEN '15+'
+	END AS 'coarse_age_fy21'
+
+	INTO Sandbox.dbo.COP22_txcurr_change_fy21q1_raw
+	
+	FROM t_paciente p
+
+	---joining province from t_hdd
+	LEFT JOIN 
+	(SELECT hdd, Provincia, designacao
+	 FROM t_hdd) f1
+	 ON p.hdd = f1.hdd 
+
+	---joining first ever ART pick-up (for revised initiation date) 
+		   LEFT JOIN
+       (SELECT * FROM (
+       SELECT ROW_NUMBER() OVER (PARTITION BY ar.nid, ar.hdd ORDER BY ar.datatarv asc) as rownum, 
+			ar.nid, ar.hdd, ar.datatarv as first_pickup
+       FROM
+              (
+              SELECT dr.nid, dr.hdd, cast(dr.datatarv as date) as datatarv
+              FROM t_tarv dr
+              LEFT JOIN
+              (SELECT nid, eval_date_q1 = '2020-12-20', hdd
+              FROM t_paciente) tpr
+              ON dr.nid = tpr.nid AND dr.hdd = tpr.hdd
+              ) ar
+       ) r
+       WHERE r.rownum = '1') fr
+       ON p.nid = fr.nid AND p.hdd = fr.hdd
+
+	---joining last ART pick-up before eval date (and associated next scheduled pick-up date)
+       LEFT JOIN
+       (SELECT * FROM(
+       SELECT ROW_NUMBER() OVER (PARTITION BY nta.nid, nta.hdd ORDER BY nta.datatarv desc) as rownum, 
+			nta.nid, nta.hdd, nta.eval_date_q1, nta.datatarv as last_pickup_q1, nta.dataproxima as last_prox_pickup_q1
+       FROM
+              (
+              SELECT ta.nid, ta.hdd, cast(ta.datatarv as date) as datatarv, cast(ta.dataproxima as date) as dataproxima, tpa.eval_date_q1
+              FROM t_tarv ta
+              LEFT JOIN
+              (SELECT nid, eval_date_q1 = '2020-12-20', hdd
+              FROM t_paciente) tpa
+              ON ta.nid = tpa.nid AND ta.hdd = tpa.hdd
+              WHERE datatarv <= eval_date_q1
+              ) nta
+       ) a
+       WHERE a.rownum = '1') ta
+       ON p.nid = ta.nid AND p.hdd = ta.hdd
+
+	---joining last consult before eval date (and associated next scheduled consult date)
+	  LEFT JOIN
+       (SELECT * FROM(
+       SELECT ROW_NUMBER() OVER (PARTITION BY nts.nid, nts.hdd ORDER BY nts.dataseguimento desc) as rownum, 
+			nts.nid, nts.hdd, nts.eval_date_q1, nts.dataseguimento as last_consult_q1, nts.dataproximaconsulta as last_prox_consult_q1
+       FROM
+              (
+              SELECT ts.nid, ts.hdd, cast(ts.dataseguimento as date) as dataseguimento, cast(ts.dataproximaconsulta as date) as dataproximaconsulta, spa.eval_date_q1
+              FROM t_seguimento ts
+              LEFT JOIN
+              (SELECT nid, eval_date_q1 = '2020-12-20', hdd
+              FROM t_paciente) spa
+              ON ts.nid = spa.nid AND ts.hdd = spa.hdd
+              WHERE dataseguimento <= eval_date_q1
+              ) nts
+       ) s
+       WHERE s.rownum = '1') ts
+       ON p.nid = ts.nid AND p.hdd = ts.hdd
+
+	---joining LAST ever ART pick-up date
+		   LEFT JOIN
+       (SELECT * FROM (
+       SELECT ROW_NUMBER() OVER (PARTITION BY ae.nid, ae.hdd ORDER BY ae.datatarv desc) as rownum, 
+			ae.nid, ae.hdd, ae.datatarv as last_ever_pickup
+       FROM
+              (
+              SELECT de.nid, de.hdd, cast(de.datatarv as date) as datatarv
+              FROM t_tarv de
+              LEFT JOIN
+              (SELECT nid, eval_date_q1 = '2020-12-20', hdd
+              FROM t_paciente) tpe
+              ON de.nid = tpe.nid AND de.hdd = tpe.hdd
+              ) ae
+       ) e
+       WHERE e.rownum = '1') le
+       ON p.nid = le.nid AND p.hdd = le.hdd
+
+	---joining LAST ever clinical consult date 
+	LEFT JOIN
+       (SELECT * FROM(
+       SELECT ROW_NUMBER() OVER (PARTITION BY sts.nid, sts.hdd ORDER BY sts.dataseguimento desc) as rownum, 
+			sts.nid, sts.hdd, sts.eval_date_q1, sts.dataseguimento as last_ever_consult 
+       FROM
+              (
+              SELECT ds.nid, ds.hdd, cast(ds.dataseguimento as date) as dataseguimento, spt.eval_date_q1
+              FROM t_seguimento ds
+              LEFT JOIN
+              (SELECT nid, eval_date_q1 = '2020-12-20', hdd
+              FROM t_paciente) spt
+              ON ds.nid = spt.nid AND ds.hdd = spt.hdd
+              ) sts
+       ) t
+       WHERE t.rownum = '1') ds
+       ON p.nid = ds.nid AND p.hdd = ds.hdd
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+---3,218,476 rows
+
+----QCing raw data table 
+
+---QCing general patient info
+SELECT nid, datanasc, sexo, datainiciotarv, datasaidatarv, codestado, hdd, coarse_age_q1
+FROM Sandbox.dbo.COP22_txcurr_change_fy21q1_raw
+WHERE nid = '	0103030601/2015/00468	D	'
+
+SELECT nid, datanasc, sexo, datainiciotarv, datasaidatarv, codestado, hdd, datediff(yy, datanasc, '2020-12-20') AS 'age_q1'
+FROM t_paciente
+WHERE nid = '	0103030601/2015/00468	D	'
+
+---QCing the ART pick-up dates pulled and MMDD
+	/*  1MDD: <83 days
+		3MDD: 83-173 days
+		6MDD: >173 days */
+SELECT nid, first_pickup, last_pickup_q1, last_prox_pickup_q1, last_ever_pickup, MMDD_q1
+FROM Sandbox.dbo.COP22_txcurr_change_fy21q1_raw
+WHERE nid = '0000000001/2018/00367' 
+
+SELECT nid, datatarv, dataproxima, datediff(dd, datatarv, dataproxima) AS 'datediff'
+FROM t_tarv
+WHERE nid = '0000000001/2018/00367'
+ORDER BY cast(datatarv as date) desc
+
+---QCing the last consult dates pulled
+SELECT nid, last_consult_q1, last_prox_consult_q1, last_ever_consult
+FROM Sandbox.dbo.COP22_txcurr_change_fy21q1_raw
+WHERE nid = '0001090113/2019/00020'
+
+SELECT nid, dataseguimento, dataproximaconsulta  
+FROM t_seguimento
+WHERE nid = '0001090113/2019/00020'
+ORDER BY cast(dataseguimento as date) desc
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+---Adding retention status 
+	---3,218,476 rows
+
+SELECT
+	rw.nid, rw.datanasc, rw.sexo, rw.datasaidatarv, rw.coarse_age_fy21, rw.codestado, rw.hdd, 
+	rw.Provincia, rw.designacao, 
+
+			---cleaning up the province field 
+CASE WHEN Provincia = 'Zambézia' THEN 'Zambezia'
+	 WHEN Provincia = 'Cidade de Maputo' THEN 'Maputo Cidade' 
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'CS Alto Mae' THEN 'Maputo Cidade'
+     WHEN Provincia = 'Maputo' AND designacao LIKE 'CS Malhangalene' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'Hospital de Dia do José Macamo' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'Centro de Saude Jose Macamo' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'CS Xipamanine' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'CS Chamanculo' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'CS 1 de Maio' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'Centro Saude Polana Canico' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'CS 1 de Junho' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'CS ALBASINE' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'CS Romao' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'CS Hulene' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'CS Inhagoia' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'CS Magoanine' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo' AND designacao LIKE 'CS Incassane' THEN 'Maputo Cidade'
+	 WHEN Provincia = 'Maputo Provincia' THEN 'Maputo'
+	ELSE  Provincia
+END AS 'provincia_rev',
+
+	rw.MMDD_q1,
+	rw.first_pickup,
+	rw.last_pickup_q1, rw.last_prox_pickup_q1, 
+	rw.last_consult_q1, rw.last_prox_consult_q1, 
+	rw.last_ever_pickup,
+	rw.last_ever_consult,
+
+	---retention status (see above note about 28-day buffer) 
+		--- q1: Sept 21, 2020 - Dec 20, 2020
+		--- q2: Dec 21, 2020 - March 20, 2021
+		--- q3: March 21, 2021 - June 20, 2021
+		--- q4: June 21, 2021 - Sept 20, 2021  
+	CASE 
+		WHEN (
+        ---scenario 1 (left-most box in flowchart)
+           (  (first_pickup < '2020-12-20') AND 
+              (datasaidatarv IS NULL) AND 
+              ((dateadd(dd,-28, '2020-12-20') <= MAX(last_prox_pickup_q1)) OR
+               (dateadd(dd,-28, '2020-12-20') <= MAX(last_prox_consult_q1)))
+		   ) OR
+       ---scenario 2 (middle box in flowchart)
+	       (  (first_pickup < '2020-12-20') AND 
+              (datasaidatarv IS NOT NULL) AND 
+			  ('2020-12-20' < datasaidatarv) AND
+              ((dateadd(dd,-28, '2020-12-20') <= MAX(last_prox_pickup_q1)) OR
+               (dateadd(dd,-28, '2020-12-20') <= MAX(last_prox_consult_q1)))
+           ) OR
+		---scenario 3 (last box on flowchart)
+       (      (first_pickup < '2020-12-20') AND 
+			  ((datasaidatarv IS NOT NULL) AND ('2020-12-20' <= datasaidatarv)) AND
+			  ((datasaidatarv < last_pickup_q1) OR (datasaidatarv < last_consult_q1)) AND
+              ((dateadd(dd,-28, '2020-12-20') <= MAX(last_prox_pickup_q1)) OR
+               (dateadd(dd,-28, '2020-12-20') <= MAX(last_prox_consult_q1))))
+       ) THEN 'Retained'
+       ELSE 'Not Retained'
+       END AS 'ret_status_q1_con',
+
+	CASE
+		WHEN 
+        ---scenario 1 (left-most box in flowchart)
+           (  (first_pickup < '2020-12-20') AND 
+              (datasaidatarv IS NULL) AND 
+              (dateadd(dd,-28, '2020-12-20') <= MAX(last_prox_pickup_q1)) )
+		    OR
+       ---scenario 2 (middle box in flowchart)
+	       (  (first_pickup < '2020-12-20') AND 
+              (datasaidatarv IS NOT NULL) AND 
+			  ('2020-12-20' < datasaidatarv) AND
+              (dateadd(dd,-28, '2020-12-20') <= MAX(last_prox_pickup_q1)) )
+            OR
+		---scenario 3 (last box on flowchart)
+           (   (first_pickup < '2020-12-20') AND 
+			  ((datasaidatarv IS NOT NULL) AND ('2020-12-20' <= datasaidatarv)) AND
+			  (datasaidatarv < last_pickup_q1) AND
+              (dateadd(dd,-28, '2020-12-20') <= MAX(last_prox_pickup_q1)) )
+       THEN 'Retained'
+       ELSE 'Not Retained'
+       END AS 'ret_status_q1_nocon'
+
+
+INTO Sandbox.dbo.COP22_txcurr_change_fy21q1_ret
+
+FROM Sandbox.dbo.COP22_txcurr_change_fy21q1_raw rw
+
+GROUP BY 
+		rw.nid, rw.datanasc, rw.sexo, rw.datasaidatarv, rw.coarse_age_fy21, rw.codestado, rw.hdd, 
+		rw.Provincia, rw.designacao, 
+		rw.MMDD_q1,
+		rw.first_pickup,
+		rw.last_pickup_q1, rw.last_prox_pickup_q1, 
+		rw.last_consult_q1, rw.last_prox_consult_q1, 
+		rw.last_ever_pickup,
+		rw.last_ever_consult
+
+-----------------------------------------------------------------------------------------------------------------------
+---adding categories 
+
+SELECT
+	   'Q1' AS 'qtr',
+	   provincia_rev AS 'province',
+	   hdd,
+	   designacao,
+	   sexo,
+	   coarse_age_fy21, 
+	   MMDD_q1 AS 'MMDD',
+	   CASE 
+			---patient is retained with or without consult consideration 
+			WHEN ret_status_q1_con = 'Retained' AND ret_status_q1_nocon = 'Retained' THEN 'Retained by pick-up'
+			----patient is retained only when considering consults, so retained by consult
+			WHEN ret_status_q1_con = 'Retained' AND ret_status_q1_nocon = 'Not Retained' THEN 'Retained by consult'
+			---patient is not retained when considering both, but is retained by pick-up (illogical) 
+			WHEN ret_status_q1_con = 'Not Retained' AND ret_status_q1_nocon = 'Retained' THEN 'Illogical'
+			---Not retained
+			WHEN ret_status_q1_con = 'Not Retained' AND ret_status_q1_nocon = 'Not Retained' THEN 'Not Retained'
+	   END AS 'txcurr_comparison',
+	   CONCAT(datanasc, '_', hdd, '_', nid) AS 'unique_id'
+INTO Sandbox.dbo.COP22_txcurr_change_fy21q1_cat2
+FROM Sandbox.dbo.COP22_txcurr_change_fy21q1_ret
+
+---------------------------------------------------------------------------------------------------------------------
+
+SELECT txcurr_comparison, COUNT(unique_id)
+FROM Sandbox.dbo.COP22_txcurr_change_fy21q1_cat
+GROUP BY txcurr_comparison
+
+---no one should be retained only by consult
+SELECT COUNT(unique_id)
+FROM Sandbox.dbo.COP22_txcurr_change_fy21q1_cat
+WHERE txcurr_comparison = 'Retained by consult'
+
+
+---------------------------------------------------------------------------------------------------------------------
+
+---creating aggregate counts by "txcurr_comparison"
+SELECT 
+	qtr, province, hdd, designacao, sexo, coarse_age_fy21, MMDD, txcurr_comparison, COUNT(unique_id) AS 'patient_ct'
+INTO Sandbox.dbo.COP22_txcurr_change_fy21q1_counts2
+FROM Sandbox.dbo.COP22_txcurr_change_fy21q1_cat2
+WHERE sexo <> 'FP'
+GROUP BY qtr, province, hdd, designacao, sexo, coarse_age_fy21, MMDD, txcurr_comparison
+
+
+SELECT txcurr_comparison, SUM(patient_ct)
+FROM Sandbox.dbo.COP22_txcurr_change_fy21q1_counts2
+GROUP BY txcurr_comparison
+
+
+
