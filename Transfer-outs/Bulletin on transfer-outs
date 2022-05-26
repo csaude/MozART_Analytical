@@ -1,0 +1,337 @@
+--May 26, 2021
+
+---Boletim de transferencias documentadas
+---Neha Kamat
+
+---queremos extrair os pacientes quem tem uma data de saida do TARV entre 1 de Jan 2018 - 31 de Dez de 2020 *E* um codestado de "Transferido Para" desde t_paciente, com os siguientes dados: 
+	---ultimo levantamento de medicamento (t_tarv) 
+	---ultima consulta (t_seguimento) 
+	---ultimo teste de CV - data e resultado (t_resultadoslaboratorio)
+	---data de inicio do TARV, data de nascimento, sexo (t_paciente) 
+	---provincia e hdd (t_hdd)
+
+---calcular: 
+	---idade na saida do TARV 
+	---faixa etaria na saida 
+	---tempo entre inicio do TARV e saida (e depois categorizar) 
+	---se o teste de CV foi feito depois da saida, entre 1 mes antes da saida, entre 6 meses antes da saida, ou mais que 6m antes da saida 
+	---se o teste indica supressao viral ou nao (basado no ultimo teste de CV)  
+	---se seu ultimo levantamento de medicamento foi feito na mesma data, antes, ou depois da saida
+	---se sua ultima consulta foi feito na mesma data, antes, ou depois da saida 
+
+	---28 de maio, 2021
+			---precisa criar uma tabela com contagens dos pacientes por idade, sexo, provincia 
+			---excluir pacientes quem tem uma data de saida ANTES do ultimo levantamento/ultima consulta  
+			---adicionar ultimo teste de CD4 (data e resultado)  
+			---adicionar um variavel categorizado que indica se o paciente tem doenca avancada ou nao 
+			---fazer verificacoes dos variaveis calculados  
+
+	---11 de junho, 2021
+			---restringir o dataset aos pacientes quem tem uma data de saida DEPOIS das DUAS - ultima consulta e ultimo levantamento 
+			---fazer verificacoes 
+			
+	---24 de maio, 2022 
+			---actualizar o periodo de tempo de interesse - 1 de Jan 2018 ate 31 de Dez 2020  
+			---mudei as linhas com FROM para usar as nomes generalizados das tabelas que nao indica qual submissao  
+			---mudei as JOINS para usar HDD e nao Access File Path 
+
+
+---====================================================================================================================================================================================
+
+WITH CTE1 AS(
+	SELECT DISTINCT
+		---dados do t_hdd
+		fac.Provincia, fac.distrito, fac.designacao, fac.hdd,
+		---limpar o variavel da provincia
+		CASE WHEN Provincia = 'Zambézia' THEN 'Zambezia'
+			 WHEN Provincia = 'Cidade de Maputo' THEN 'Maputo Cidade' 
+			 WHEN Provincia = 'Maputo' AND fac.hdd = '1110106' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND fac.hdd = '1110109' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND fac.hdd = '1110202' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND fac.hdd = '1110206' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND fac.hdd = '1110212' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND fac.hdd = '1110214' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND fac.hdd = '1110307' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND fac.hdd = '1110317' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND fac.hdd = '1110406' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND fac.hdd = '1110411' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND fac.hdd = '1110412' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND fac.hdd = '1110414' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND fac.hdd = '1110512' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND fac.hdd = '1110514' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND fac.hdd = '1110613' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo Provincia' THEN 'Maputo'
+		ELSE  Provincia
+		END AS 'provincia_rev',
+		---dados do t_paciente
+		pt.nid, 
+		cast(pt.datainiciotarv as date) as datainiciotarv,
+		cast(pt.datasaidatarv as date) as datasaidatarv,
+		pt.sexo,
+		cast(pt.datanasc as date) as datanasc,
+		pt.codestado,
+		---ultimo levantamento (t_tarv) 
+		cast(ss2.max_datatarv as date) as max_datatarv, cast(ss2.max_dataproxima as date) as max_dataproxima,
+		---ultima consulta (t_seguimento) 
+		cast(bb2.max_dataseguimento as date) as max_dataseguimento, cast(bb2.max_dataproximaconsulta as date) as max_dataproximaconsulta,
+		---calcular e categorizar idade na saida do TARV (em anos)
+		datediff(yy, cast(datanasc as date), cast(datasaidatarv as date)) AS 'idade_saida',
+		CASE WHEN datediff(yy,cast(datanasc as date), cast(datasaidatarv as date)) BETWEEN 0 AND 4 THEN '0-4'
+			 WHEN datediff(yy,cast(datanasc as date), cast(datasaidatarv as date)) BETWEEN 5 AND 9 THEN '5-9'
+			 WHEN datediff(yy,cast(datanasc as date), cast(datasaidatarv as date)) BETWEEN 10 AND 14 THEN '10-14'
+			 WHEN datediff(yy,cast(datanasc as date), cast(datasaidatarv as date)) BETWEEN 15 AND 19 THEN '15-19'
+			 WHEN datediff(yy,cast(datanasc as date), cast(datasaidatarv as date)) BETWEEN 20 AND 24 THEN '20-24'
+			 WHEN datediff(yy,cast(datanasc as date), cast(datasaidatarv as date)) BETWEEN 25 AND 29 THEN '25-29'
+			 WHEN datediff(yy,cast(datanasc as date), cast(datasaidatarv as date)) BETWEEN 30 AND 34 THEN '30-34'
+			 WHEN datediff(yy,cast(datanasc as date), cast(datasaidatarv as date)) BETWEEN 35 AND 39 THEN '35-39'
+			 WHEN datediff(yy,cast(datanasc as date), cast(datasaidatarv as date)) BETWEEN 40 AND 44 THEN '40-44'
+			 WHEN datediff(yy,cast(datanasc as date), cast(datasaidatarv as date)) BETWEEN 45 AND 49 THEN '45-49'
+			 WHEN datediff(yy,cast(datanasc as date), cast(datasaidatarv as date)) >= 50              THEN '50+'
+		END AS 'faixa_etaria_saida',
+		---calcular tempo entre inicio do TARV e transferencia (em meses) 
+		datediff(mm, cast(datainiciotarv as date), cast(datasaidatarv as date)) AS 'tempo_a_trans',
+		---ultimo teste de CV - data e resultado 
+		t1.ult_CV_data, t1.ult_CV_resultado,
+		---ultimo teste de CD4 - data e resultado 
+		t2.ult_CD4_data, t2.ult_CD4_resultado,
+		---calculando o tempo entre teste e transferencia (em meses) 
+		datediff(mm, t1.ult_CV_data, cast(pt.datasaidatarv as date)) AS 'tempo_CV_saida',
+		datediff(mm, t2.ult_CD4_data, cast(pt.datasaidatarv as date)) AS 'tempo_cd4_saida'
+	
+	---comecamos com os dados da tabela t_paciente
+	FROM t_paciente pt 
+	
+	---juntando com t_hdd
+	LEFT JOIN 
+		t_hdd fac
+		ON pt.hdd = fac.hdd 
+	
+	---ultimo teste de CV 
+	LEFT JOIN
+		(SELECT * FROM (
+			SELECT ROW_NUMBER () OVER (PARTITION BY nts.nid, nts.hdd ORDER BY nts.dataVL desc) as rownum, 
+				nts.nid, nts.hdd,
+				nts.dataVL as ult_CV_data, nts.resultado as ult_CV_resultado
+		FROM  
+				(SELECT ts.nid, ts.hdd, cast(dataresultado as date) as dataVL, codexame, resultado
+				FROM t_resultadoslaboratorio ts
+				WHERE codexame = 'Carga Viral'
+				) nts
+			) t
+			WHERE t.rownum = '1') t1
+		ON pt.nid = t1.nid AND pt.hdd = t1.hdd
+
+	---ultimo teste de CD4
+	LEFT JOIN
+		(SELECT * FROM (
+			SELECT ROW_NUMBER () OVER (PARTITION BY nt1.nid, nt1.hdd ORDER BY nt1.datacd4 desc) as rownum, 
+				nt1.nid, nt1.hdd,
+				nt1.datacd4 as ult_CD4_data, nt1.resultado as ult_CD4_resultado
+		FROM  
+				(SELECT ts2.nid, ts2.hdd, cast(dataresultado as date) as datacd4, codexame, resultado
+				FROM t_resultadoslaboratorio ts2
+				WHERE codexame = 'CD4'
+				) nt1
+			) w
+			WHERE w.rownum = '1') t2
+		ON pt.nid = t2.nid AND pt.hdd = t2.hdd
+	
+	---ultimo levantamento 
+	LEFT JOIN
+	(SELECT * FROM (
+		SELECT ROW_NUMBER () OVER (PARTITION BY a1.nid, a1.hdd ORDER BY cast(a1.datatarv as date) desc) as rownum, 
+		a1.nid, a1.hdd, a1.datatarv AS max_datatarv, a1.dataproxima AS max_dataproxima, a1.codregime
+		FROM
+			(SELECT a2.nid, a2.hdd, cast(a2.datatarv as date) AS datatarv, cast(a2.dataproxima as date) AS dataproxima, a2.codregime
+			 FROM t_tarv a2
+			 ) a1
+			 ) st
+		WHERE st.rownum = '1' ) ss2
+		ON pt.hdd = ss2.hdd AND pt.nid = ss2.nid
+
+	---ultima consulta
+	LEFT JOIN
+	(SELECT * FROM (
+		SELECT ROW_NUMBER () OVER (PARTITION BY b1.nid, b1.hdd ORDER BY cast(b1.dataseguimento as date) desc) as rownum, 
+		b1.nid, b1.hdd, b1.dataseguimento AS max_dataseguimento, b1.dataproximaconsulta AS max_dataproximaconsulta
+		FROM
+			(SELECT b2.nid, b2.hdd, cast(b2.dataseguimento as date) AS dataseguimento, cast(b2.dataproximaconsulta as date) AS dataproximaconsulta
+			 FROM t_seguimento b2
+			 ) b1
+			 ) bt
+		WHERE bt.rownum = '1' ) bb2
+		ON pt.hdd = bb2.hdd AND pt.nid = bb2.nid
+
+	---aplicando os criterios para fazer a coorte
+	WHERE (cast(pt.datasaidatarv as date) >= '2018-01-01')
+	  AND (cast(pt.datasaidatarv as date) <= '2020-12-31')
+	  AND pt.codestado = 'TRANSFERIDO PARA' 		
+		) 
+,
+CTE2 AS (
+	SELECT *, 
+		---categorizando tempo entre inicio do TARV e a transferencia 
+		CASE WHEN tempo_a_trans >0    AND tempo_a_trans <=6  THEN '<6 meses' 
+			 WHEN tempo_a_trans >6    AND tempo_a_trans <=12 THEN '7-12 meses' 
+			 WHEN tempo_a_trans >12   AND tempo_a_trans <=24 THEN '13-24 meses'			
+			 WHEN tempo_a_trans >24   AND tempo_a_trans <=59 THEN '25-59 meses'
+			 WHEN tempo_a_trans >60							  THEN '60+ meses'
+	    END AS 'tempo_trans_cat',
+		---identificar quando o ultimo teste de CV foi feito (1) depois da saida, (2) entre 1 mes antes da saida, (3) entre os 6 meses antes da saida, (4) mais que 6 meses antes da saida 
+		CASE WHEN tempo_CV_saida < 0 THEN 'CV-depois'
+			 WHEN tempo_CV_saida = 0 THEN 'CV-entre-1m-antes'
+			 WHEN tempo_CV_saida > 0 AND tempo_CV_saida <=6 THEN 'CV-entre-6m-antes'
+		     WHEN tempo_CV_saida > 6 THEN 'CV-mq-6m-antes'
+		END AS 'CV_entre6m',
+		---o ultimo teste de CV indica suppresao ou nao?  
+		CASE WHEN ult_CV_resultado <1000   THEN 'Suprimida'
+			 WHEN ult_CV_resultado >= 1000 THEN 'Nao Suprimida'
+		END AS 'ult_CV_Suprimida',
+		---se o ultimo teste de CD4 indica doenca avancada ou nao?  
+		CASE WHEN ult_CD4_resultado < 200 THEN 'Doenca avancada'
+			 WHEN ult_CD4_resultado >= 200 THEN 'Doenca nao avancada'
+		END AS 'ult_CD4_avancada',
+		---identificar quando o ultimo teste de CD4 foi feito (1) depois da saida, (2) entre 1 mes antes da saida, (3) entre os 6 meses antes da saida, (4) mais que 6 meses antes da saida 
+		CASE WHEN tempo_cd4_saida < 0 THEN 'CD4-depois'
+			 WHEN tempo_cd4_saida = 0 THEN 'CD4-entre-1m-antes'
+			 WHEN tempo_cd4_saida > 0 AND tempo_cd4_saida <=6 THEN 'CD4-entre-6m-antes'
+		     WHEN tempo_cd4_saida > 6 THEN 'CD4-mq-6m-antes'
+		END AS 'CD4_entre6m',
+		---se o ultimo levantamento foi feito depois ou antes (ou na mesma data) da saida? 
+		CASE WHEN cast(datasaidatarv as date) > max_datatarv THEN 'saida_depois'
+			 WHEN cast(datasaidatarv as date) = max_datatarv THEN 'mesma'
+			 WHEN cast(datasaidatarv as date) < max_datatarv THEN 'saida_antes'
+		END AS 'saida_ult_lev',
+		---se o ultima consulta foi feito depois ou antes (ou na mesma data) da saida? 
+		CASE WHEN cast(datasaidatarv as date) > max_dataseguimento THEN 'saida_depois'
+			 WHEN cast(datasaidatarv as date) = max_dataseguimento THEN 'mesma'
+			 WHEN cast(datasaidatarv as date) < max_dataseguimento THEN 'saida_antes'
+		END AS 'saida_ult_consulta'
+FROM CTE1) 
+
+SELECT *
+INTO Sandbox.dbo.transferencias_Maio25
+FROM CTE2
+WHERE   (saida_ult_consulta = 'saida_depois' OR saida_ult_consulta = 'mesma')
+	AND (saida_ult_lev = 'saida_depois'  OR saida_ult_lev = 'mesma')
+
+---======================================================================================================================================
+---verificando # de transferencias para confirmar o tamanho da coorte  
+	---dataset - 124,780 linhas
+
+	----# de transferencias em nosso periodo de interesse: 138,520 (esta bem que e mais porque excluimos as transferencias com datas de saida ANTES do ultimo levantamento/ultima consulta)  
+	SELECT COUNT(nid) 
+	FROM t_paciente
+	WHERE codestado = 'Transferido Para' AND cast(datasaidatarv as date) >= '2018-01-01' AND cast(datasaidatarv as date) <= '2020-12-31'
+
+
+---======================================================================================================================================
+---verificacoes dos dados
+
+---informacao extraida
+	---t_hdd
+		SELECT provincia, distrito, designacao, hdd
+		FROM t_hdd
+		ORDER BY hdd
+
+		SELECT provincia, provincia_rev, distrito, designacao, hdd
+		FROM Sandbox.dbo.transferencias_Maio25
+		GROUP BY provincia, provincia_rev, distrito, designacao, hdd
+		ORDER BY hdd
+
+	---t_paciente - verifique com 5 NIDs seleccionados aletoriamente 
+		SELECT nid, datainiciotarv, datasaidatarv, sexo, datanasc, codestado
+		FROM t_paciente
+		WHERE nid = '' 
+
+		SELECT nid, datainiciotarv, datasaidatarv, sexo, datanasc, codestado
+		FROM Sandbox.dbo.transferencias_Maio25
+		WHERE nid = '' 
+
+		--nota: existe por menos um paciente quem tem a mesma data para inicio e saida do TARV - decidimos que sim, e possivel 
+				---alguem tal vez procurou uma US quando estava a viajar, foi diagnosticado, inicou TARV, e pediu uma transferencia ao uma US mais perto a onde vive
+
+	---t_tarv - verifique com 5 NIDs seleccionados aletoriamente 
+		SELECT nid, cast(datatarv as date) AS datatarv, cast(dataproxima as date) AS dataproxima
+		FROM t_tarv
+		WHERE nid = '' 
+		ORDER BY cast(datatarv as date) desc
+
+		SELECT nid, max_datatarv, max_dataproxima
+		FROM Sandbox.dbo.transferencias_Maio25
+		WHERE nid = ''
+
+	---t_seguimento - verifique com 5 NIDs seleccionados aletoriamente 
+		SELECT nid, cast(dataseguimento as date) AS dataseguimento, cast(dataproximaconsulta as date) AS dataproximaconsulta
+		FROM t_seguimento
+		WHERE nid = '' 
+		ORDER BY cast(dataseguimento as date) desc
+
+		SELECT nid, max_dataseguimento, max_dataproximaconsulta
+		FROM Sandbox.dbo.transferencias_Maio25
+		WHERE nid = ''
+
+	---t_resultadoslaboratorio - verifique com 5 NIDs seleccionados aletoriamente 
+		---ultimo teste de CV - data e resultado 
+		SELECT nid, codexame, dataresultado, resultado
+		FROM t_resultadoslaboratorio 
+		WHERE nid = ''
+				AND codexame = 'Carga Viral'
+		ORDER BY cast(dataresultado as date) desc 
+
+		SELECT nid, ult_CV_data, ult_CV_resultado 
+		FROM Sandbox.dbo.transferencias_Maio25
+		WHERE nid = '' 
+
+		---ultimo teste de CD4 - data e resultado 
+		SELECT nid, codexame, dataresultado, resultado
+		FROM t_resultadoslaboratorio 
+		WHERE nid = ''
+				AND codexame = 'CD4'
+		ORDER BY cast(dataresultado as date) desc 
+
+		SELECT nid, ult_CD4_data, ult_CD4_resultado 
+		FROM Sandbox.dbo.transferencias_Maio25
+		WHERE nid = '' 
+
+---variaveis calculados: 
+	---a idade na saida
+		SELECT nid, datanasc, datasaidatarv, datediff(yy, cast(datanasc as date), cast(datasaidatarv as date)) AS 'idade_saida'
+		FROM t_paciente
+		WHERE nid = '' 
+
+		SELECT nid, datanasc, datasaidatarv, idade_saida, faixa_etaria_saida
+		FROM Sandbox.dbo.transferencias_Maio25
+		WHERE nid = '' 
+
+
+	---o tempo entre inicio do TARV e saida do TARV  - e o variavel categorizado 
+		SELECT nid, datainiciotarv, datasaidatarv, datediff(mm, cast(datainiciotarv as date), cast(datasaidatarv as date)) AS 'tempo' 
+		FROM t_paciente 
+		WHERE nid = '' 
+
+		SELECT nid, datainiciotarv, datasaidatarv, tempo_a_trans, tempo_trans_cat
+		FROM Sandbox.dbo.transferencias_Maio25
+		WHERE nid = '' 
+
+	---o tempo entre ultimo teste de CV e saida do TARV 
+		SELECT nid, ult_CV_data, ult_CV_resultado, datasaidatarv, tempo_CV_saida, CV_entre6m, ult_CV_Suprimida
+		FROM Sandbox.dbo.transferencias_Maio25
+		WHERE nid = '' 
+
+	---o tempo entre ultimo teste de CD4 e saida do TARV 
+		SELECT nid, ult_CD4_data, ult_CD4_resultado, datasaidatarv, tempo_cd4_saida, CD4_entre6m, ult_CD4_avancada
+		FROM Sandbox.dbo.transferencias_Maio25
+		WHERE nid = '' 
+
+	---o tempo entre a saida do TARV e o ultimo levantamento 
+		SELECT nid, datasaidatarv, max_datatarv, saida_ult_lev
+		FROM Sandbox.dbo.transferencias_Maio25
+		WHERE nid = ''
+
+	---o tempo entre a saida do TARV e a ultima consulta
+		SELECT nid, datasaidatarv, max_dataseguimento, saida_ult_consulta
+		FROM Sandbox.dbo.transferencias_Maio25
+		WHERE nid = ''
+
+	
