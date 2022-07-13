@@ -1,0 +1,365 @@
+/*
+Boletim das RAMJ
+- Uma coorte das RAMJ que iniciaram tratamento entre 29 de Set 2019 ate 29 de Set 2020
+- Para cada paciente na coorte: 
+	•	data de início do TARV 
+	•	idade no início do TARV 
+	•	data de saida do TARV 
+	•	codestado	
+	•	primeiro levantamento (e regime) 
+	•	último levantamento antes de completar um ano (e regime), e o próximo levantamento marcado
+	•	última consulta antes de completar um ano, e a próxima consulta marcada
+	•	data de nascimento 
+	•	primeiro teste de carga viral (data e resultado) 
+	•	primeiro teste de CD4 (data e resultado)
+	•	província 
+	•	Calcular/confirmar: 
+		o	Calcular estado de retenção um ano depois do início do TARV (59 dias depois dos dias marcados para o proximo levantamento o proxima consulta, esta considerada como abandono no dia 60)
+		o	Confirmar que os primeiros testes de carga viral e CD4 foram feitos no primeiro ano do TARV 
+		o	Confirmar que os regimes do primeiro e último levantamento (antes de completar um ano) são o mesmo 
+		
+*/
+
+
+SELECT DISTINCT 
+	--- t_paciente  
+	p.nid, cast(p.datanasc as date) AS datanasc, p.sexo, cast(p.datainiciotarv as date) AS datainiciotarv, cast(p.datasaidatarv as date) AS datasaidatarv, p.codestado, p.hdd, p.idade,
+	---provincia da t_hdd
+	f1.Provincia, f1.desginacao, 
+	---primeiro levantamento no TARV (e regime)
+	fr.pri_levantamento, fr.pri_regime,
+	---data de avaliacao (1 ano depois do inicio do TARV)  
+	dateadd(mm,  12, cast(p.datainiciotarv as date)) AS data_aval_12m,
+	---ultimo levantamento antes de completar um ano no TARV (e regime, e a data marcada para o proximo levantamento) 
+	tsa.ult_levantamento_12m,  tsa.levantamento_marc_12m, tsa.regime_12m,
+	---ultima consulta antes de completar um ano no TARV (e reigme), e a data marcada para a proxima consulta 
+	ts.ult_consulta_12m, ts.consulta_marc_12m,
+	---ultimo levantamento no total do TARV 
+	le.ult_levantamento_total,
+	---ultima consulta no total do TARV
+	ds.ult_consulta_total
+	/* 
+	,
+	---primeiro teste de carga viral (data e resultado) 
+	ss2.pri_cv_data, ss2.pri_cv_resultado,
+	---primeiro teste de CD4 (data e resultado)
+	sd2.pri_cd4_data, sd2.pri_cd4_resultado
+	*/
+
+
+	INTO Sandbox.dbo.RAMJ_May9_colhido
+	
+	FROM t_paciente p 
+
+	---juntamos com t_hdd 
+	LEFT JOIN 
+	(SELECT hdd, Provincia
+	 FROM t_hdd) f1
+	 ON p.hdd = f1.hdd 
+
+	---primeiro levantamento do TARV  
+		   LEFT JOIN
+       (SELECT * FROM (
+       SELECT ROW_NUMBER() OVER (PARTITION BY ar.nid, ar.hdd ORDER BY ar.datatarv asc) as rownum, 
+			ar.nid, ar.hdd, ar.datatarv as pri_levantamento, ar.codregime as pri_regime
+       FROM
+              (
+              SELECT dr.nid, dr.hdd, cast(dr.datatarv as date) as datatarv, dr.codregime
+              FROM t_tarv dr
+              LEFT JOIN
+              (SELECT nid, eval_date_6m = dateadd(mm, 6, cast(datainiciotarv as date)), hdd
+              FROM t_paciente) tpr
+              ON dr.nid = tpr.nid AND dr.hdd = tpr.hdd
+              ) ar
+       ) r
+       WHERE r.rownum = '1') fr
+       ON p.nid = fr.nid AND p.hdd = fr.hdd
+
+	---ultimo levantamento antes de completar 12 meses no TARV (e regime) e a data marcada para o proximo levantamento
+       LEFT JOIN
+       (SELECT * FROM(
+       SELECT ROW_NUMBER() OVER (PARTITION BY nta.nid, nta.hdd ORDER BY nta.datatarv desc) as rownum, 
+			nta.nid, nta.hdd, nta.data_aval_12m, nta.datatarv as ult_levantamento_12m, nta.dataproxima as levantamento_marc_12m, nta.codregime as regime_12m
+       FROM
+              (
+              SELECT ta.nid, ta.hdd, cast(ta.datatarv as date) as datatarv, cast(ta.dataproxima as date) as dataproxima, tpa.data_aval_12m, ta.codregime
+              FROM t_tarv ta
+              LEFT JOIN
+              (SELECT nid, data_aval_12m = dateadd(mm, 12, cast(datainiciotarv as date)), hdd
+              FROM t_paciente) tpa
+              ON ta.nid = tpa.nid AND ta.hdd = tpa.hdd
+              WHERE datatarv <= data_aval_12m
+              ) nta
+       ) a
+       WHERE a.rownum = '1') tsa
+       ON p.nid = tsa.nid AND p.hdd = tsa.hdd
+
+	---ultima consulta antes de completar um ano no TARV (e a data marcada para a proxima consulta) 
+	  LEFT JOIN
+       (SELECT * FROM(
+       SELECT ROW_NUMBER() OVER (PARTITION BY nts.nid, nts.hdd ORDER BY nts.dataseguimento desc) as rownum, 
+			nts.nid, nts.hdd, nts.data_aval_12m, nts.dataseguimento as 'ult_consulta_12m', nts.dataproximaconsulta as 'consulta_marc_12m'
+       FROM
+              (
+              SELECT ts.nid, ts.hdd, cast(ts.dataseguimento as date) as dataseguimento, cast(ts.dataproximaconsulta as date) as dataproximaconsulta, spa.data_aval_12m
+              FROM t_seguimento ts
+              LEFT JOIN
+              (SELECT nid, data_aval_12m = dateadd(mm, 12, cast(datainiciotarv as date)), hdd
+              FROM t_paciente) spa
+              ON ts.nid = spa.nid AND ts.hdd = spa.hdd
+              WHERE dataseguimento <= data_aval_12m
+              ) nts
+       ) s
+       WHERE s.rownum = '1') ts
+       ON p.nid = ts.nid AND p.hdd = ts.hdd
+
+	---ultimo levantamento no total do TARV 
+		   LEFT JOIN
+       (SELECT * FROM (
+       SELECT ROW_NUMBER() OVER (PARTITION BY ae.nid, ae.hdd ORDER BY ae.datatarv desc) as rownum, 
+			ae.nid, ae.hdd, ae.datatarv as ult_levantamento_total 
+       FROM
+              (
+              SELECT de.nid, de.hdd, cast(de.datatarv as date) as datatarv
+              FROM t_tarv de
+              LEFT JOIN
+              (SELECT nid, eval_date_6m = dateadd(mm, 6, cast(datainiciotarv as date)), hdd
+              FROM t_paciente) tpe
+              ON de.nid = tpe.nid AND de.hdd = tpe.hdd
+              ) ae
+       ) e
+       WHERE e.rownum = '1') le
+       ON p.nid = le.nid AND p.hdd = le.hdd
+
+	---ultima consulta no total do TARV 
+	LEFT JOIN
+       (SELECT * FROM(
+       SELECT ROW_NUMBER() OVER (PARTITION BY sts.nid, sts.hdd ORDER BY sts.dataseguimento desc) as rownum, 
+			sts.nid, sts.hdd, sts.dataseguimento as ult_consulta_total 
+       FROM
+              (
+              SELECT ds.nid, ds.hdd, cast(ds.dataseguimento as date) as dataseguimento
+              FROM t_seguimento ds
+              LEFT JOIN
+              (SELECT nid, eval_date_6m = dateadd(mm, 6, cast(datainiciotarv as date)), hdd
+              FROM t_paciente) spt
+              ON ds.nid = spt.nid AND ds.hdd = spt.hdd
+              ) sts
+       ) t
+       WHERE t.rownum = '1') ds
+       ON p.nid = ds.nid AND p.hdd = ds.hdd
+
+	---definir a coorte  
+   	WHERE '2019-09-29' <= cast(p.datainiciotarv as date) AND
+     				      cast(p.datainiciotarv as date) <= '2020-09-29'
+		AND p.sexo = 'F' 
+		AND p.idade BETWEEN 15 and 24
+		 
+
+	-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/* verificacoes da qualidade*/
+
+----(1) verificando - numero do NIDs no database e numero do pacientes na coorte
+	---a coorte tem 40,410 linhas
+
+	---39,377 RAMJ iniciaram TARV em nosso periodo de interes 
+	SELECT COUNT(distinct nid) AS 'ramj_total'
+	FROM t_paciente
+	WHERE '2019-09-29' <= cast(datainiciotarv as date) AND
+     				      cast(datainiciotarv as date) <= '2020-09-29'
+		AND sexo = 'F' 
+		AND idade BETWEEN 15 and 24
+
+
+	---40,410 RAMJ que iniciaram TARV em nosso periodo de interes, usando mais variaveis para distinguir paciente diferentes 
+	SELECT COUNT(*) AS 'nid_ct' 
+	FROM (SELECT DISTINCT nid, hdd, datanasc
+      FROM t_paciente
+		WHERE '2019-09-29' <= cast(datainiciotarv as date) AND
+     				      cast(datainiciotarv as date) <= '2020-09-29'
+		AND sexo = 'F' 
+		AND idade BETWEEN 15 and 24  )
+		AS internalQuery
+
+----(2) confirmar dados
+	---(a) levantamentos - data, regime, dataproxima - primeiro, ultimo antes de 12 meses, e ultimo no total do TARV
+	SELECT nid, datatarv, dataproxima, codregime
+	FROM t_tarv
+	WHERE nid = ''
+	ORDER BY cast(datatarv as date) ASC 
+
+	SELECT nid, pri_levantamento, pri_regime, data_aval_12m, ult_levantamento_12m, regime_12m, levantamento_marc_12m, ult_levantamento_total
+	FROM Sandbox.dbo.RAMJ_May9_colhido
+	WHERE nid = ''
+
+
+	---(b) consultas - data e dataproxima - antes de completar 12 meses e a ultima no total de TARV 
+	SELECT nid, dataseguimento, dataproximaconsulta
+	FROM t_seguimento
+	WHERE nid = ''
+	ORDER BY cast(dataseguimento as date) ASC 
+
+	SELECT nid, data_aval_12m, ult_consulta_12m, consulta_marc_12m, ult_consulta_total
+	FROM Sandbox.dbo.RAMJ_May9_colhido 
+	WHERE nid = ''
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+----usando a primeira tabela, agora temos que adicionar dados dos testes laboratorios, e atribuir um estado de retencao (retido OU nao retido) a cada paciente na coorte
+
+	SELECT DISTINCT
+		---variaveis da tabela anterior
+		ch.nid, ch.datanasc, ch.sexo, ch.datainiciotarv, ch.idade, ch.datasaidatarv, ch.codestado, ch.hdd, 
+		ch.provincia, 
+		ch.pri_levantamento, ch.pri_regime, 
+		ch.data_aval_12m, 
+		ch.ult_levantamento_12m, ch.levantamento_marc_12m, ch.regime_12m,
+		ch.ult_consulta_12m, ch.consulta_marc_12m, 
+		ch.ult_levantamento_total, 
+		ch.ult_consulta_total,
+		---variaveis novos da tablea dos resultados laboratorio
+				---primeiro teste de carga viral (data e resultado) 
+				ss2.pri_cv_data, ss2.pri_cv_resultado,
+				---primeiro teste de CD4 (data e resultado)
+				sd2.pri_cd4_data, sd2.pri_cd4_resultado,
+		---limpando os dados da tabela t_hdd (provincia) 
+		CASE WHEN Provincia = 'Zambézia' THEN 'Zambezia'
+			 WHEN Provincia = 'Cidade de Maputo' THEN 'Maputo Cidade' 
+			 WHEN Provincia = 'Maputo' AND ch.hdd = '1110106' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND ch.hdd = '1110109' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND ch.hdd = '1110202' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND ch.hdd = '1110206' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND ch.hdd = '1110212' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND ch.hdd = '1110214' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND ch.hdd = '1110307' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND ch.hdd = '1110317' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND ch.hdd = '1110406' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND ch.hdd = '1110411' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND ch.hdd = '1110412' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND ch.hdd = '1110414' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND ch.hdd = '1110512' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND ch.hdd = '1110514' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo' AND ch.hdd = '1110613' THEN 'Maputo Cidade'
+			 WHEN Provincia = 'Maputo Provincia' THEN 'Maputo'
+		ELSE  Provincia
+		END AS 'provincia_rev',
+		---adicionando o estado de retencao 
+			CASE 
+		WHEN (
+        ---cenario 1 
+           (  (pri_levantamento < data_aval_12m) AND 
+              (datasaidatarv IS NULL) AND 
+             ((dateadd(dd,-28,data_aval_12m) <= MAX(levantamento_marc_12m)) OR
+              (dateadd(dd,-28,data_aval_12m) <= MAX(consulta_marc_12m)))
+		   ) OR
+       ---cenario 2 (middle box in flowchart)
+	       (  (pri_levantamento < data_aval_12m) AND 
+              (datasaidatarv IS NOT NULL) AND 
+			  (data_aval_12m < datasaidatarv) AND
+             ((dateadd(dd,-28,data_aval_12m) <= MAX(levantamento_marc_12m)) OR
+              (dateadd(dd,-28,data_aval_12m) <= MAX(consulta_marc_12m)))
+           ) OR
+		---cenario 3 
+           (   (pri_levantamento < data_aval_12m) AND 
+			  ((datasaidatarv IS NOT NULL) AND (data_aval_12m <= datasaidatarv)) AND
+			  ((datasaidatarv < ult_levantamento_12m) OR (datasaidatarv < ult_consulta_12m)) AND
+              ((dateadd(dd,-28,data_aval_12m) <= MAX(levantamento_marc_12m)) OR
+               (dateadd(dd,-28,data_aval_12m) <= MAX(consulta_marc_12m)))
+           )
+	   ) THEN 'Retido'
+         ELSE 'Nao Retido'
+    END AS 'estado_ret_12m'
+
+	INTO Sandbox.dbo.RAMJ_May9_comlab
+	FROM Sandbox.dbo.RAMJ_May9_colhido ch
+
+	---primeiro teste de carga viral (data e resultado) 
+		LEFT JOIN
+	(SELECT * FROM (
+		SELECT ROW_NUMBER ( ) OVER (PARTITION BY r3.nid, r3.hdd ORDER BY cast(r3.dataresultado as date) asc) as rownum, 
+			r3.nid, r3.hdd, r3.dataresultado AS 'pri_cv_data', r3.resultado AS 'pri_cv_resultado'
+			FROM 
+				(SELECT r4.nid, r4.hdd, cast(r4.dataresultado as date) as 'dataresultado', r4.resultado
+				FROM t_resultadoslaboratorio r4
+				WHERE codexame = 'Carga Viral'
+				) r3
+				) st
+			WHERE st.rownum = '1') ss2 
+			ON ch.hdd = ss2.hdd AND ch.nid = ss2.nid
+
+	---primeiro teste de CD4 (data e resultado)
+		LEFT JOIN
+	(SELECT * FROM (
+		SELECT ROW_NUMBER ( ) OVER (PARTITION BY d3.nid, d3.hdd ORDER BY cast(d3.dataresultado as date) asc) as rownum, 
+			d3.nid, d3.hdd, d3.dataresultado AS 'pri_cd4_data', d3.resultado AS 'pri_cd4_resultado'
+			FROM 
+				(SELECT d4.nid, d4.hdd, cast(d4.dataresultado as date) as 'dataresultado', d4.resultado
+				FROM t_resultadoslaboratorio d4
+				WHERE codexame = 'CD4'
+				) d3
+				) dst
+			WHERE dst.rownum = '1') sd2 
+			ON ch.hdd = sd2.hdd AND ch.nid = sd2.nid
+
+
+GROUP BY 
+		ch.nid, ch.datanasc, ch.sexo, ch.datainiciotarv, ch.idade, ch.datasaidatarv, ch.codestado, ch.hdd, 
+		ch.provincia, 
+		ch.pri_levantamento, ch.pri_regime, 
+		ch.data_aval_12m, 
+		ch.ult_levantamento_12m, ch.levantamento_marc_12m, ch.regime_12m,
+		ch.ult_consulta_12m, ch.consulta_marc_12m, 
+		ch.ult_levantamento_total, 
+		ch.ult_consulta_total,
+		ss2.pri_cv_data, ss2.pri_cv_resultado,
+		sd2.pri_cd4_data, sd2.pri_cd4_resultado
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+---verificar os dados dos testes laboratorios --- the dataset "RAMJ_May9_comlab" has 40,410 rows 
+
+	---primeiro teste de carga viral
+	SELECT nid, codexame, dataresultado, resultado
+	FROM t_resultadoslaboratorio
+	WHERE nid = '' 
+		AND codexame = 'Carga Viral'
+	ORDER BY cast(dataresultado as date) ASC 
+
+	SELECT nid, pri_cv_data, pri_cv_resultado
+	FROM Sandbox.dbo.RAMJ_May9_comlab
+	WHERE nid = '' 
+
+		---primeiro teste de CD4
+	SELECT nid, codexame, dataresultado, resultado
+	FROM t_resultadoslaboratorio
+	WHERE nid = '' 
+		AND codexame = 'CD4'
+	ORDER BY cast(dataresultado as date) ASC 
+
+	SELECT nid, pri_cd4_data, pri_cd4_resultado
+	FROM Sandbox.dbo.RAMJ_May9_comlab
+	WHERE nid = '' 
+
+
+---verificar o estado de retencao atribuido 
+	SELECT nid, 
+		   hdd,
+		   data_aval_12m,
+		   pri_levantamento, 
+		   ult_levantamento_12m, levantamento_marc_12m,
+		   ult_consulta_12m, consulta_marc_12m, 
+		   ult_levantamento_total, 
+		   ult_consulta_total,
+		   estado_ret_12m
+	FROM Sandbox.dbo.RAMJ_May9_comlab
+	WHERE nid = ''
+
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------	
+
+
+
+
+
