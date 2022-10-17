@@ -153,13 +153,13 @@ WHERE provincia is not null and nid is not null
 
 SELECT * 
 FROM MozART_q4_2020_Clean.dbo.t_resultadoslaboratorio
-WHERE nid = '010202100120140003711655'
+WHERE nid = ''
 	AND codexame = 'Carga Viral'
 ORDER BY cast(dataresultado as date) desc
 
 SELECT *
 FROM Sandbox.dbo.CD4netwk_pt2
-WHERE nid = '010202100120140003711655'
+WHERE nid = ''
 
 ---identify # of pts with 2 VL tests = 554,702
 SELECT COUNT(distinct nid)
@@ -233,12 +233,12 @@ WHERE maxdatatarv is null
 ---Qcing nid by nid 
 SELECT * 
 FROM MozART_q4_2020_Clean.dbo.t_tarv
-WHERE nid = '01000000012016014411447300'
+WHERE nid = ''
 ORDER BY cast(datatarv as date) desc
 
 SELECT *
 FROM Sandbox.dbo.CD4netwk_pt3
-WHERE nid = '01000000012016014411447300'
+WHERE nid = ''
 
 
 ---how many people have their last ART pick-up between March 1, 2019 and Aug 31, 2019 = 95,876
@@ -388,13 +388,13 @@ WHERE nid is null
 ---nid by nid check to see if the right CD4 is being pulled 
 SELECT * 
 FROM MozART_q4_2020_Clean.dbo.t_resultadoslaboratorio 
-WHERE nid = '01021106012020000372045720225'
+WHERE nid = ''
 	AND codexame = 'CD4'
 ORDER BY cast(dataresultado as date) asc
 
 SELECT *
 FROM Sandbox.dbo.CD4netwk_pt4
-WHERE nid = '01021106012020000372045720225'
+WHERE nid = ''
 
 ----creating counts by province, district, and then also by HF
 SELECT Provincia, COUNT(distinct nid) AS 'pt_ct'
