@@ -112,11 +112,11 @@ SELECT COUNT(*)
 SELECT nid, dataresultado, resultado
 FROM t_resultadoslaboratorio 
 WHERE codexame = 'CD4' 
-	AND nid = '0102020901/2021/00366'
+	AND nid = ''
 
 SELECT nid, dataresultado, resultado
 FROM Sandbox.dbo.MISAU_CD4_Mar10
-WHERE nid = '0102020901/2021/00366'
+WHERE nid = ''
 
 --11,752 patients had their first CD4 test in the year-long period that was within 30 days of either ART initiation OR diagnosis 
 SELECT count(distinct nid) AS 'pt_ct'
