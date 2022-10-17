@@ -90,17 +90,17 @@ FROM CTE1
 ---checking, nid by nid, to see that it's pulling the patient's FIRST CD4 test
 SELECT *
   FROM MozART_q4_2020_Clean.dbo.t_resultadoslaboratorio
-  WHERE nid = '01050701012019001292111'
+  WHERE nid = ''
 	AND codexame = 'CD4'
   ORDER BY cast(dataresultado as date) desc
 
 SELECT *
   FROM Sandbox.dbo.MISAU_CD4_Mar21
-  WHERE nid = '01050701012019001292111'
+  WHERE nid = ''
 
 SELECT *
   FROM Sandbox.dbo.MISAU_CD4_Mar21_pt2
-  WHERE nid = '01050701012019001292111'
+  WHERE nid = ''
 
 
 
