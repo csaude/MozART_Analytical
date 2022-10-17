@@ -73,12 +73,12 @@ SELECT Count(*) FROM Sandbox.dbo.ZAP_CS4_MTNK
 SELECT DISTINCT datatarv, nid 
 FROM MozART_q1_2020.dbo.t_tarv
 WHERE cast(datatarv as date) >= '2015-10-01'
-	AND nid='01041409010020160000390'
+	AND nid=''
 
 SELECT DISTINCT datatarv, nid
 FROM Sandbox.dbo.ZAP_CS4_MTNK_Redo
 WHERE cast(datatarv as date) >= '2015-10-01'
-	AND nid='01041409010020160000390'
+	AND nid=''
 
 ---Marcela QCs, too! 
 SELECT DISTINCT t.datatarv, t.dias, t.AccessFilePath AS t_AFP, t.nid, f.Distrito, f.AccessFilePath AS f_AFP
@@ -86,7 +86,7 @@ FROM  MozART_q1_2020.dbo.t_tarv t
 LEFT JOIN  MozART_q1_2020.dbo.t_hdd f
 ON t.AccessFilePath = f.AccessFilePath
 WHERE cast(datatarv as date) >= '2015-10-01'
-    AND f.Provincia = 'Zambézia' AND nid='03010100107181613257'
+    AND f.Provincia = 'Zambézia' AND nid=''
 
 
 ---step 2 with Marcela: for each drug pick-up, classify as 1M, 3M, 6M or Other under "pickup_type"
@@ -112,12 +112,12 @@ SELECT Count(*) FROM Sandbox.dbo.ZAP_CS4_MTNK
 SELECT DISTINCT datatarv, nid, dias
 FROM MozART_q1_2020.dbo.t_tarv
 WHERE cast(datatarv as date) >= '2015-10-01'
-	AND nid='01040201012018004249510'
+	AND nid=''
 
 SELECT DISTINCT datatarv, nid, dias
 FROM Sandbox.dbo.ZAP_CS4_MTNK2
 WHERE cast(datatarv as date) >= '2015-10-01'
-	AND nid='01040201012018004249510'
+	AND nid=''
 
 ---step 3 with Marcela: adding COUNTS 
 	---2,975 rows
