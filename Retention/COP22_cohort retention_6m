@@ -301,31 +301,31 @@ WHERE designacao is null
 					---FY18: Mar 21, 2017 - Mar 20, 2018
 SELECT nid, datanasc, sexo, datainiciotarv, datasaidatarv, codestado, hdd
 FROM t_paciente
-WHERE nid = '0100091201/2019/00018'
+WHERE nid = ''
 
 SELECT nid, datanasc, sexo, datainiciotarv, datasaidatarv, codestado, FY_cohort, initiated_month, eval_date_6m, hdd
 FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
-WHERE nid = '0100091201/2019/00018'
+WHERE nid = ''
 
 ----(3) checking the ART pick-up dates pulled --- first_pickup, last_pickup_6m, last_prox_pickup_6m, last_ever_pickup
 SELECT nid, datatarv, dataproxima 
 FROM t_tarv
-WHERE nid = '0100110701/2017/00531'
+WHERE nid = ''
 ORDER BY cast(datatarv as date) desc
 
 SELECT nid, datainiciotarv, eval_date_6m, first_pickup, last_pickup_6m, last_prox_pickup_6m, last_ever_pickup
 FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
-WHERE nid = '0100110701/2017/00531'
+WHERE nid = ''
 
 ----(4) checking the consult dates pulled 
 SELECT nid, dataseguimento, dataproximaconsulta  
 FROM t_seguimento
-WHERE nid = '0100110701/2018/00467'
+WHERE nid = ''
 ORDER BY cast(dataseguimento as date) desc
 
 SELECT  nid, eval_date_6m, last_consult_6m, last_prox_consult_6m, last_ever_consult
 FROM Sandbox.dbo.COP22_cohort_ret_6m_raw
-WHERE nid = '0100110701/2018/00467'
+WHERE nid = ''
 
 ----(5) checking obs with null fields --- 941 obs have no next pick-up date AND no next consult date; 941/808,185 = 0.116% - determined to not be significant 
 SELECT count(nid)
